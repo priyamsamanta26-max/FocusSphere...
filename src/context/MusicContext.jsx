@@ -9,8 +9,9 @@ export function MusicProvider({ children }) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(210);
   const [volume, setVolume] = useState(0.85);
-  const [isAutoRandom, setIsAutoRandom] = useState(true);
+  const [isAutoRandom, setIsAutoRandom] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
+  const [isAutoplay, setIsAutoplay] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('Lofi Study Chill');
   const [audioUnlocked, setAudioUnlocked] = useState(false);
@@ -19,8 +20,9 @@ export function MusicProvider({ children }) {
   const isPlayerReadyRef = useRef(false);
   const searchResultsRef = useRef([]);
   const currentTrackRef = useRef(null);
-  const isAutoRandomRef = useRef(true);
+  const isAutoRandomRef = useRef(false);
   const isLoopingRef = useRef(false);
+  const isAutoplayRef = useRef(true);
   // HTMLAudio fallback for reliable playback (iTunes previewUrl)
   const audioRef = useRef(null);
   const currentSourceRef = useRef('yt'); // 'yt' or 'audio'
@@ -31,6 +33,7 @@ export function MusicProvider({ children }) {
   currentTrackRef.current = currentTrack;
   isAutoRandomRef.current = isAutoRandom;
   isLoopingRef.current = isLooping;
+  isAutoplayRef.current = isAutoplay;
 
   // Initialize YouTube Player
   useEffect(() => {
@@ -68,10 +71,12 @@ export function MusicProvider({ children }) {
                 if (isLoopingRef.current) {
                   event.target.seekTo(0);
                   event.target.playVideo();
-                } else if (isAutoRandomRef.current) {
-                  playRandomNextSong();
-                } else {
-                  playNextTrack();
+                } else if (isAutoplayRef.current) {
+                  if (isAutoRandomRef.current) {
+                    playRandomNextSong();
+                  } else {
+                    playNextTrack();
+                  }
                 }
               }
             }
@@ -599,6 +604,10 @@ export function MusicProvider({ children }) {
     setIsAutoRandom(!isAutoRandom);
   };
 
+  const toggleAutoplay = () => {
+    setIsAutoplay(!isAutoplay);
+  };
+
   const unlockAudio = () => {
     setAudioUnlocked(true);
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -656,6 +665,7 @@ export function MusicProvider({ children }) {
         volume,
         isAutoRandom,
         isLooping,
+        isAutoplay,
         isLoading,
         searchQuery,
         setSearchQuery,
@@ -666,6 +676,7 @@ export function MusicProvider({ children }) {
         changeVolume,
         toggleLoop,
         toggleAutoRandom,
+        toggleAutoplay,
         unlockAudio,
         audioUnlocked,
         playNextTrack,
@@ -682,7 +693,7 @@ export function MusicProvider({ children }) {
           height: '1px',
           opacity: 0.01,
           pointerEvents: 'none',
-          zIndex: -9999
+          zIndex: 9999
         }}
       >
         <div id="yt-bg-player"></div>
@@ -701,8 +712,9 @@ export function useMusic() {
     currentTime: 0,
     duration: 210,
     volume: 0.85,
-    isAutoRandom: true,
+    isAutoRandom: false,
     isLooping: false,
+    isAutoplay: true,
     isLoading: false,
     searchQuery: '',
     searchMusic: () => {},
@@ -712,6 +724,7 @@ export function useMusic() {
     changeVolume: () => {},
     toggleLoop: () => {},
     toggleAutoRandom: () => {},
+    toggleAutoplay: () => {},
     playNextTrack: () => {},
     playPrevTrack: () => {},
     playRandomNextSong: () => {}
