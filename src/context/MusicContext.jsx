@@ -419,6 +419,20 @@ export function MusicProvider({ children }) {
     return null;
   };
 
+  // Background pre-resolution of the next 3 tracks' video IDs to warm up the cache
+  useEffect(() => {
+    if (!currentTrack || searchResults.length === 0) return;
+    const idx = searchResults.findIndex((t) => t.id === currentTrack.id);
+    if (idx !== -1) {
+      for (let i = 1; i <= 3; i++) {
+        const nextTrack = searchResults[(idx + i) % searchResults.length];
+        if (nextTrack) {
+          resolveYTVideoId(nextTrack).catch(() => {});
+        }
+      }
+    }
+  }, [currentTrack, searchResults]);
+
   // Play track using background YouTube player stream for full-length support
   const playTrack = async (track) => {
     if (!track) return;
