@@ -1,487 +1,462 @@
-import React, { createContext, useContext, useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useMusic } from '../context/MusicContext';
+import { 
+  Search, Play, Pause, SkipBack, SkipForward, 
+  Repeat, Shuffle, Volume2, VolumeX, Music, Disc, 
+  ListMusic, Clock, Loader2, Sparkles,
+  Flame, Moon, Sun, Wind, Coffee
+} from 'lucide-react';
 
-const MusicContext = createContext();
+const MOODS = [
+  { name: 'Lofi Study', query: 'Lofi Chill Study Beats', icon: <Coffee size={12} className="text-amber-400" /> },
+  { name: 'Deep Focus', query: 'Deep Focus Ambient', icon: <Moon size={12} className="text-teal-455" /> },
+  { name: 'Rain Sounds', query: 'Rain Nature Soundscape', icon: <Wind size={12} className="text-teal-500" /> },
+  { name: 'Acoustic Study', query: 'Acoustic Instrumental Piano Guitar', icon: <Sun size={12} className="text-amber-500" /> },
+  { name: 'Synthwave Focus', query: 'Synthwave Study Chill', icon: <Flame size={12} className="text-rose-400" /> }
+];
 
-export function MusicProvider({ children }) {
-  const [searchResults, setSearchResults] = useState([]);
-  const [currentTrack, setCurrentTrack] = useState(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(210);
-  const [volume, setVolume] = useState(0.85);
-  const [isAutoRandom, setIsAutoRandom] = useState(true);
-  const [isLooping, setIsLooping] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('Lofi Study Chill');
-  const [audioUnlocked, setAudioUnlocked] = useState(false);
+export default function FocusMusic() {
+  const {
+    searchResults,
+    currentTrack,
+    isPlaying,
+    currentTime,
+    duration,
+    volume,
+    isAutoRandom,
+    isLooping,
+    isLoading,
+    searchQuery,
+    setSearchQuery,
+    searchMusic,
+    playTrack,
+    togglePlayPause,
+    seekTime,
+    changeVolume,
+    toggleLoop,
+    toggleAutoRandom,
+    unlockAudio,
+    audioUnlocked,
+    playNextTrack,
+    playPrevTrack,
+    playRandomNextSong
+  } = useMusic();
 
-  const ytPlayerRef = useRef(null);
-  const isPlayerReadyRef = useRef(false);
-  const searchResultsRef = useRef([]);
-  const currentTrackRef = useRef(null);
-  const isAutoRandomRef = useRef(true);
-  const isLoopingRef = useRef(false);
-  const audioRef = useRef(null);
-  const currentSourceRef = useRef('yt'); // 'yt' or 'audio'
-  const audioReadyRef = useRef(false);
-  searchResultsRef.current = searchResults;
-  currentTrackRef.current = currentTrack;
-  isAutoRandomRef.current = isAutoRandom;
-  isLoopingRef.current = isLooping;
+  const [inputVal, setInputVal] = useState(searchQuery || '');
 
-  // Initialize YouTube Player
-  useEffect(() => {
-    const initPlayer = () => {
-      if (window.YT && window.YT.Player && !ytPlayerRef.current) {
-        ytPlayerRef.current = new window.YT.Player('yt-bg-player', {
-          height: '200',
-          width: '200',
-          playerVars: {
-            autoplay: 0,
-            controls: 0,
-            disablekb: 1,
-            fs: 0,
-            rel: 0,
-            modestbranding: 1,
-            playsinline: 1,
-            origin: window.location.origin
-          },
-          events: {
-            onReady: (event) => {
-              isPlayerReadyRef.current = true;
-              event.target.setVolume(Math.round(volume * 100));
-            },
-            onStateChange: (event) => {
-              if (event.data === 1) {
-                setIsPlaying(true);
-              } else if (event.data === 2) {
-                setIsPlaying(false);
-              } else if (event.data === 0) {
-                if (isLoopingRef.current) {
-                  event.target.seekTo(0);
-                  event.target.playVideo();
-                } else if (isAutoRandomRef.current) {
-                  playRandomNextSong();
-                } else {
-                  playNextTrack();
-                }
-              }
-            }
-          }
-        });
-      }
-    };
-
-    if (window.YT && window.YT.Player) {
-      initPlayer();
-    } else {
-      window.onYouTubeIframeAPIReady = initPlayer;
-      
-      if (!document.getElementById('yt-iframe-script')) {
-        const tag = document.createElement('script');
-        tag.id = 'yt-iframe-script';
-        tag.src = 'https://www.youtube.com/iframe_api';
-        const firstScriptTag = document.getElementsByTagName('script')[0];
-        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-      }
-    }
-
-    const interval = setInterval(() => {
-      if (currentSourceRef.current === 'audio' && audioRef.current) {
-        try {
-          const audio = audioRef.current;
-          const curr = audio.currentTime || 0;
-          const dur = audio.duration || 0;
-          setCurrentTime(curr);
-          if (dur > 0 && dur !== Infinity) setDuration(dur);
-        } catch (e) {}
-        return;
-      }
-
-      const player = ytPlayerRef.current;
-      if (player && isPlayerReadyRef.current && typeof player.getCurrentTime === 'function') {
-        try {
-          const curr = player.getCurrentTime() || 0;
-          const dur = player.getDuration() || 0;
-          setCurrentTime(curr);
-          if (dur > 0) {
-            setDuration(dur);
-          }
-        } catch (e) {}
-      }
-    }, 250);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // HTMLAudio fallback for previews
-  useEffect(() => {
-    if (!audioRef.current) audioRef.current = new Audio();
-    const audio = audioRef.current;
-
-    const onTime = () => {
-      try {
-        setCurrentTime(audio.currentTime || 0);
-        if (audio.duration && audio.duration > 0) setDuration(audio.duration);
-      } catch (e) {}
-    };
-
-    const onEnded = () => {
-      setIsPlaying(false);
-      if (isLoopingRef.current) {
-        try { audio.currentTime = 0; audio.play(); } catch (e) {}
-      } else if (isAutoRandomRef.current) {
-        playRandomNextSong();
-      } else {
-        playNextTrack();
-      }
-    };
-
-    const onLoaded = () => {
-      audioReadyRef.current = true;
-      try { if (audio.duration) setDuration(audio.duration); } catch (e) {}
-    };
-
-    audio.addEventListener('timeupdate', onTime);
-    audio.addEventListener('ended', onEnded);
-    audio.addEventListener('loadedmetadata', onLoaded);
-    audio.addEventListener('play', () => setIsPlaying(true));
-    audio.addEventListener('pause', () => setIsPlaying(false));
-
-    return () => {
-      audio.removeEventListener('timeupdate', onTime);
-      audio.removeEventListener('ended', onEnded);
-      audio.removeEventListener('loadedmetadata', onLoaded);
-      try { audio.pause(); audio.src = ''; } catch (e) {}
-    };
-  }, []);
-
-  const INVIDIOUS_INSTANCES = [
-    'https://yewtu.be',
-    'https://invidious.lunar.icu',
-    'https://invidious.projectsegfau.lt',
-    'https://inv.tux.im',
-    'https://invidious.flokinet.to'
-  ];
-
-  // Search songs globally in parallel
-  const searchMusic = async (term) => {
-    if (!term || !term.trim()) return;
-    setIsLoading(true);
-    const q = term.trim();
-    setSearchQuery(q);
-
-    let tracks = [];
-    let searchSuccessful = false;
-
-    // Fetch from a single Invidious instance helper
-    const fetchInstance = async (instance) => {
-      const url = `${instance}/api/v1/search?q=${encodeURIComponent(q + ' audio')}&type=video`;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000); // 6s abort timeout
-      try {
-        const res = await fetch(url, { signal: controller.signal });
-        clearTimeout(timeoutId);
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.length > 0) {
-            return data.map((item) => {
-              const duration = item.lengthSeconds || 240;
-              return {
-                id: item.videoId,
-                title: item.title,
-                artist: item.author || 'YouTube Audio',
-                album: 'YouTube Stream',
-                artwork: `https://img.youtube.com/vi/${item.videoId}/hqdefault.jpg`,
-                genre: 'Study Focus',
-                duration: duration,
-                previewUrl: null,
-                query: item.videoId
-              };
-            });
-          }
-        }
-        throw new Error('Empty or invalid results');
-      } catch (err) {
-        clearTimeout(timeoutId);
-        throw err;
-      }
-    };
-
-    // Try parallel Invidious fetches concurrently using Promise.any
-    try {
-      const promises = INVIDIOUS_INSTANCES.map((instance) => fetchInstance(instance));
-      tracks = await Promise.any(promises);
-      searchSuccessful = true;
-    } catch (err) {
-      console.warn('All concurrent Invidious requests failed or timed out:', err);
-    }
-
-    // Fallback to iTunes Search API
-    if (!searchSuccessful) {
-      try {
-        const res = await fetch(
-          `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&media=music&entity=song&limit=30`
-        );
-        const data = await res.json();
-
-        if (data && data.results && data.results.length > 0) {
-          tracks = data.results.map((item) => {
-            const rawDuration = item.trackTimeMillis ? Math.round(item.trackTimeMillis / 1000) : 210;
-            const artwork = item.artworkUrl100
-              ? item.artworkUrl100.replace('100x100bb', '600x600bb')
-              : 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&q=80';
-
-            return {
-              id: String(item.trackId || item.collectionId || Math.random()),
-              title: item.trackName || q,
-              artist: item.artistName || 'Artist',
-              album: item.collectionName || 'Single',
-              artwork: artwork,
-              genre: item.primaryGenreName || 'Music',
-              duration: rawDuration,
-              previewUrl: item.previewUrl || null,
-              query: `${item.trackName} ${item.artistName} audio`
-            };
-          });
-          searchSuccessful = true;
-        }
-      } catch (err) {
-        console.error('iTunes search fallback error:', err);
-      }
-    }
-
-    if (tracks.length === 0) {
-      tracks = [
-        {
-          id: 'exact_' + Date.now(),
-          title: q,
-          artist: 'Exact Search Result',
-          album: 'Full Duration Track',
-          artwork: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=500&q=80',
-          genre: 'Music',
-          duration: 210,
-          query: `${q} audio`
-        }
-      ];
-    }
-
-    setSearchResults(tracks);
-
-    if (tracks.length > 0) {
-      setCurrentTrack(tracks[0]);
-      setDuration(tracks[0].duration || 210);
-    }
-    setIsLoading(false);
-  };
-
-  useEffect(() => {
-    searchMusic('Lofi Chill Study Beats');
-  }, []);
-
-  const playTrack = (track) => {
-    if (!track) return;
-    setCurrentTrack(track);
-    setDuration(track.duration || 210);
-    setCurrentTime(0);
-
-    try {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = '';
-      }
-    } catch (e) {}
-
-    if (track.previewUrl) {
-      currentSourceRef.current = 'audio';
-      setIsPlaying(false);
-      audioReadyRef.current = false;
-      if (audioRef.current) {
-        audioRef.current.src = track.previewUrl;
-        audioRef.current.volume = volume;
-        audioRef.current.load();
-        const playPromise = audioRef.current.play();
-        if (playPromise !== undefined) {
-          playPromise.then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
-        }
-      }
-    } else {
-      currentSourceRef.current = 'yt';
-      setIsPlaying(false);
-      const player = ytPlayerRef.current;
-      if (player && isPlayerReadyRef.current && typeof player.loadVideoById === 'function') {
-        player.loadVideoById({
-          videoId: track.id,
-          suggestedQuality: 'small'
-        });
-        player.setVolume(Math.round(volume * 100));
-        player.playVideo();
-      } else {
-        // Fallback search resolver
-        const instance = INVIDIOUS_INSTANCES[Math.floor(Math.random() * INVIDIOUS_INSTANCES.length)];
-        fetch(`${instance}/api/v1/search?q=${encodeURIComponent(track.query)}&type=video`)
-          .then((res) => res.json())
-          .then((data) => {
-            if (data && data.length > 0 && data[0].videoId) {
-              const videoId = data[0].videoId;
-              if (player && isPlayerReadyRef.current && typeof player.loadVideoById === 'function') {
-                player.loadVideoById({
-                  videoId: videoId,
-                  suggestedQuality: 'small'
-                });
-                player.playVideo();
-              }
-            }
-          })
-          .catch((err) => console.error('Audio resolve error:', err));
-      }
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    if (inputVal.trim()) {
+      setSearchQuery(inputVal);
+      searchMusic(inputVal);
     }
   };
 
-  const togglePlayPause = () => {
-    if (currentSourceRef.current === 'audio' && audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.pause();
-        setIsPlaying(false);
-      } else {
-        audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
-      }
-      return;
-    }
-
-    const player = ytPlayerRef.current;
-    if (player && isPlayerReadyRef.current) {
-      if (isPlaying) {
-        player.pauseVideo();
-        setIsPlaying(false);
-      } else {
-        player.playVideo();
-        setIsPlaying(true);
-      }
-    }
+  const handlePresetClick = (term) => {
+    setInputVal(term);
+    setSearchQuery(term);
+    searchMusic(term);
   };
 
-  const seekTime = (secs) => {
-    setCurrentTime(secs);
-    if (currentSourceRef.current === 'audio' && audioRef.current) {
-      audioRef.current.currentTime = secs;
-      return;
-    }
-    const player = ytPlayerRef.current;
-    if (player && isPlayerReadyRef.current && typeof player.seekTo === 'function') {
-      player.seekTo(secs, true);
-    }
-  };
-
-  const changeVolume = (val) => {
-    const cleanVolume = Math.max(0, Math.min(1, val));
-    setVolume(cleanVolume);
-
-    if (audioRef.current) {
-      audioRef.current.volume = cleanVolume;
-    }
-
-    const player = ytPlayerRef.current;
-    if (player && isPlayerReadyRef.current && typeof player.setVolume === 'function') {
-      player.setVolume(Math.round(cleanVolume * 100));
-    }
-  };
-
-  const toggleLoop = () => {
-    setIsLooping(!isLooping);
-  };
-
-  const toggleAutoRandom = () => {
-    setIsAutoRandom(!isAutoRandom);
-  };
-
-  const unlockAudio = () => {
-    setAudioUnlocked(true);
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (AC) {
-      try {
-        const dummy = new AC();
-        dummy.resume();
-      } catch (e) {}
-    }
-    if (audioRef.current) {
-      audioRef.current.play().then(() => audioRef.current.pause()).catch(() => {});
-    }
-  };
-
-  const playNextTrack = () => {
-    const list = searchResultsRef.current;
-    const current = currentTrackRef.current;
-    if (!list || list.length === 0) return;
-    if (!current) {
-      playTrack(list[0]);
-      return;
-    }
-    const idx = list.findIndex((t) => t.id === current.id);
-    if (idx !== -1 && idx < list.length - 1) {
-      playTrack(list[idx + 1]);
-    } else {
-      playTrack(list[0]);
-    }
-  };
-
-  const playPrevTrack = () => {
-    const list = searchResultsRef.current;
-    const current = currentTrackRef.current;
-    if (!list || list.length === 0) return;
-    if (!current) {
-      playTrack(list[0]);
-      return;
-    }
-    const idx = list.findIndex((t) => t.id === current.id);
-    if (idx !== -1 && idx > 0) {
-      playTrack(list[idx - 1]);
-    } else {
-      playTrack(list[list.length - 1]);
-    }
-  };
-
-  const playRandomNextSong = () => {
-    const list = searchResultsRef.current;
-    if (!list || list.length === 0) return;
-    const randIdx = Math.floor(Math.random() * list.length);
-    playTrack(list[randIdx]);
+  const formatSeconds = (secs) => {
+    if (isNaN(secs) || secs < 0) return '0:00';
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
   return (
-    <MusicContext.Provider
-      value={{
-        searchResults,
-        currentTrack,
-        isPlaying,
-        currentTime,
-        duration,
-        volume,
-        isAutoRandom,
-        isLooping,
-        isLoading,
-        searchQuery,
-        setSearchQuery,
-        searchMusic,
-        playTrack,
-        togglePlayPause,
-        seekTime,
-        changeVolume,
-        toggleLoop,
-        toggleAutoRandom,
-        unlockAudio,
-        audioUnlocked,
-        playNextTrack,
-        playPrevTrack,
-        playRandomNextSong
-      }}
-    >
-      {children}
-      <div id="yt-bg-player" style={{ position: 'absolute', top: '-9999px', left: '-9999px', pointerEvents: 'none', opacity: 0 }} />
-    </MusicContext.Provider>
-  );
-}
+    <div className="max-w-7xl mx-auto space-y-8 pb-28 font-sans">
+      
+      {/* Page Header Title */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/60 pb-6">
+        <div>
+          <h2 className="text-3xl font-extrabold bg-gradient-to-r from-slate-100 to-teal-450 bg-clip-text text-transparent uppercase tracking-wider flex items-center gap-3">
+            <Music className="text-teal-405 animate-pulse" size={28} />
+            Focus Audio Hub
+          </h2>
+          <p className="text-slate-400 text-xs mt-1 font-semibold uppercase tracking-wider">
+            Stream full-length audio tracks, focus beats, and ambient soundscapes
+          </p>
+        </div>
 
-export function useMusic() {
-  return useContext(MusicContext);
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Play random shortcut */}
+          <button
+            onClick={playRandomNextSong}
+            className="px-4.5 py-2.5 bg-gradient-to-r from-teal-500/10 to-teal-650/15 hover:from-teal-500 hover:to-teal-600 text-teal-355 hover:text-white rounded-2xl font-black text-xs flex items-center gap-1.5 border border-teal-500/20 transition-all hover:scale-105 cursor-pointer"
+          >
+            <Sparkles size={14} /> Play Random
+          </button>
+
+          {/* Auto Shuffle toggle */}
+          <button
+            onClick={toggleAutoRandom}
+            className={`px-4.5 py-2.5 rounded-2xl font-black text-xs flex items-center gap-2 transition-all duration-300 border cursor-pointer ${
+              isAutoRandom 
+                ? 'bg-gradient-to-r from-teal-500 to-teal-650 text-white border-teal-500 shadow-lg shadow-teal-950/40' 
+                : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-850'
+            }`}
+            title="Automatically play a random song next"
+          >
+            <Shuffle size={14} className={isAutoRandom ? 'animate-spin' : ''} style={{ animationDuration: '4s' }} />
+            Auto-Shuffle: {isAutoRandom ? 'ON' : 'OFF'}
+          </button>
+
+          {!audioUnlocked && (
+            <button
+              onClick={unlockAudio}
+              className="px-4.5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl font-black text-xs flex items-center gap-1.5 shadow-lg shadow-amber-500/25 transition-all hover:scale-105 cursor-pointer"
+            >
+              Enable Sound
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Split Screen Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        
+        {/* Left Column: Premium Active Player Deck */}
+        <div className="lg:col-span-5 space-y-6">
+          <div className="relative overflow-hidden glass-card p-8 rounded-[2.5rem] shadow-2xl border border-teal-500/10 bg-slate-900/40 backdrop-blur-xl">
+            {/* Decorative aura */}
+            <div className="absolute -top-12 -left-12 w-64 h-64 bg-teal-500/5 rounded-full blur-3xl pointer-events-none" />
+            
+            {currentTrack ? (
+              <div className="relative z-10 flex flex-col items-center text-center space-y-6">
+                
+                {/* Spinning Vinyl Record Visual */}
+                <div className="relative w-56 h-56 flex items-center justify-center">
+                  {/* Vinyl Plate */}
+                  <div 
+                    className={`absolute w-48 h-48 bg-slate-950 rounded-full shadow-2xl flex items-center justify-center border-4 border-slate-900/90 transition-transform duration-700 z-0 ${
+                      isPlaying ? 'translate-x-10 animate-spin' : 'translate-x-0'
+                    }`}
+                    style={{ animationDuration: '8s' }}
+                  >
+                    <div className="absolute inset-2 rounded-full border border-slate-900/20" />
+                    <div className="absolute inset-4 rounded-full border border-slate-900/20" />
+                    <div className="absolute inset-6 rounded-full border border-slate-900/20" />
+                    <div className="absolute inset-8 rounded-full border border-slate-900/20" />
+                    <div className="w-14 h-14 rounded-full bg-teal-700 border-4 border-slate-900 flex items-center justify-center">
+                      <div className="w-3 h-3 rounded-full bg-slate-100" />
+                    </div>
+                  </div>
+
+                  {/* Album Art Cover (Sleeve) */}
+                  <div className="relative w-48 h-48 rounded-2xl overflow-hidden shadow-2xl border-4 border-slate-800/90 z-10 bg-slate-900">
+                    <img
+                      src={currentTrack.artwork || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&q=80'}
+                      alt={currentTrack.title}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+                    
+                    {/* Visualizer bars */}
+                    {isPlaying && (
+                      <div className="absolute bottom-3 left-3 right-3 flex items-end justify-center gap-1 h-8 pointer-events-none">
+                        {[...Array(6)].map((_, i) => (
+                          <span 
+                            key={i} 
+                            className="w-1 bg-teal-400 rounded-full animate-bounce"
+                            style={{ 
+                              height: '100%',
+                              animationDuration: `${0.5 + i * 0.12}s`,
+                              animationDelay: `${i * 0.04}s`
+                            }}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Metadata */}
+                <div className="w-full">
+                  <span className="text-[9px] font-black uppercase tracking-widest px-2.5 py-1 bg-teal-950/60 border border-teal-500/20 text-teal-400 rounded-full">
+                    {currentTrack.genre || 'Exact Match'}
+                  </span>
+                  <h3 className="text-lg font-bold text-slate-100 mt-3 truncate px-4 uppercase tracking-wide">
+                    {currentTrack.title}
+                  </h3>
+                  <p className="text-xs font-bold text-teal-400 mt-0.5 truncate">
+                    {currentTrack.artist}
+                  </p>
+                  <p className="text-[10px] text-slate-500 font-semibold mt-1 uppercase tracking-wider truncate">
+                    Source: {currentTrack.album}
+                  </p>
+                </div>
+
+                {/* Equalizer Audio Waves */}
+                <div className="h-8 flex items-center justify-center gap-0.5 w-full max-w-[240px]">
+                  {[...Array(24)].map((_, i) => {
+                    const baseHeight = 6 + Math.sin(i * 0.8) * 6;
+                    return (
+                      <div
+                        key={i}
+                        className={`w-0.5 rounded-full transition-all duration-350 ${
+                          isPlaying ? 'bg-teal-400 animate-pulse' : 'bg-slate-700'
+                        }`}
+                        style={{
+                          height: isPlaying ? `${Math.max(4, Math.random() * 20 + 4)}px` : `${baseHeight}px`,
+                          animationDelay: `${i * 0.03}s`,
+                          animationDuration: '0.7s'
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+
+                {/* Progress Slider */}
+                <div className="w-full space-y-2">
+                  <div className="flex justify-between text-[10px] font-mono font-bold text-slate-400 px-1">
+                    <span>{formatSeconds(currentTime)}</span>
+                    <span>{formatSeconds(duration || currentTrack.duration || 210)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max={duration || currentTrack.duration || 210}
+                    step="1"
+                    value={currentTime || 0}
+                    onChange={(e) => seekTime(parseFloat(e.target.value))}
+                    className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-teal-500 hover:accent-teal-400 outline-none"
+                  />
+                </div>
+
+                {/* Player Controllers */}
+                <div className="w-full flex items-center justify-between pt-2">
+                  {/* Loop */}
+                  <button
+                    onClick={toggleLoop}
+                    className={`p-3 rounded-xl transition-all duration-300 border cursor-pointer ${
+                      isLooping 
+                        ? 'bg-teal-500/10 text-teal-450 border-teal-500/30 shadow' 
+                        : 'bg-slate-900/60 text-slate-500 border-slate-850 hover:text-slate-300'
+                    }`}
+                    title={isLooping ? 'Loop Enabled' : 'Loop Off'}
+                  >
+                    <Repeat size={16} />
+                  </button>
+
+                  {/* Navigation Controls */}
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={playPrevTrack}
+                      className="p-3 bg-slate-900/80 hover:bg-slate-805 text-slate-300 hover:text-teal-405 rounded-xl border border-slate-800 transition-all hover:scale-105 cursor-pointer"
+                      title="Previous Track"
+                    >
+                      <SkipBack size={16} />
+                    </button>
+
+                    <button
+                      onClick={togglePlayPause}
+                      className="w-12 h-12 bg-teal-650 hover:bg-teal-700 text-white rounded-full flex items-center justify-center shadow-lg shadow-teal-500/20 hover:scale-110 active:scale-95 transition-all cursor-pointer"
+                      title={isPlaying ? 'Pause' : 'Play'}
+                    >
+                      {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" className="ml-0.5" />}
+                    </button>
+
+                    <button
+                      onClick={playNextTrack}
+                      className="p-3 bg-slate-900/80 hover:bg-slate-805 text-slate-300 hover:text-teal-405 rounded-xl border border-slate-800 transition-all hover:scale-105 cursor-pointer"
+                      title="Next Track"
+                    >
+                      <SkipForward size={16} />
+                    </button>
+                  </div>
+
+                  {/* Volume Slider */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => changeVolume(volume === 0 ? 0.85 : 0)}
+                      className="text-slate-550 hover:text-teal-400 transition-all cursor-pointer"
+                    >
+                      {volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                    </button>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={volume}
+                      onChange={(e) => changeVolume(parseFloat(e.target.value))}
+                      className="w-16 h-1 bg-slate-855 rounded-lg appearance-none cursor-pointer accent-teal-500"
+                    />
+                  </div>
+                </div>
+
+              </div>
+            ) : (
+              <div className="py-20 text-center text-slate-500 flex flex-col items-center justify-center gap-3">
+                <Music size={40} className="text-slate-700 mb-1 animate-pulse" />
+                <p className="font-bold text-xs uppercase tracking-wider text-slate-400">No active track selected</p>
+                <p className="text-[10px]">Select a song from the list to start streaming.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right Column: Search, Moods & Tracks Catalog */}
+        <div className="lg:col-span-7 space-y-6">
+          
+          {/* Search Panel */}
+          <div className="glass-card p-6 rounded-[2rem] shadow-xl border border-slate-800/80">
+            <form onSubmit={handleSearchSubmit} className="relative w-full">
+              <div className="relative flex items-center bg-slate-950 border border-slate-850 rounded-2xl p-1.5 focus-within:border-teal-500/80 focus-within:ring-4 focus-within:ring-teal-950/40 transition-all duration-300 group">
+                <div className="flex items-center gap-2 pl-3 select-none">
+                  <span className="text-[9px] font-black tracking-widest text-teal-405 bg-teal-950/80 border border-teal-500/20 px-2 py-0.5 rounded-md uppercase">
+                    Audio
+                  </span>
+                  <span className="text-slate-700 font-bold text-xs">/</span>
+                </div>
+                <input
+                  type="text"
+                  value={inputVal}
+                  onChange={(e) => setInputVal(e.target.value)}
+                  placeholder="Search any song, artist, band, album..."
+                  className="flex-1 min-w-0 bg-transparent py-2.5 px-3 outline-none text-slate-100 font-bold placeholder:text-slate-650 text-xs"
+                />
+                <div className="flex items-center gap-2 pr-1">
+                  {inputVal && (
+                    <button
+                      type="button"
+                      onClick={() => setInputVal('')}
+                      className="p-2 text-slate-500 hover:text-slate-300 transition-colors cursor-pointer text-[10px] font-black"
+                    >
+                      ✕
+                    </button>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="h-9 px-4.5 bg-gradient-to-r from-teal-550 to-teal-650 hover:from-teal-500 hover:to-teal-600 text-white rounded-xl font-black text-xs flex items-center gap-1.5 shadow-md shadow-teal-955/20 transition-all hover:scale-103 active:scale-97 disabled:opacity-50 cursor-pointer"
+                  >
+                    {isLoading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+                    <span>Find</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+
+            {/* Grid Mood Board */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-4">
+              {MOODS.map((mood) => (
+                <button
+                  key={mood.name}
+                  type="button"
+                  onClick={() => handlePresetClick(mood.query)}
+                  className="p-2.5 bg-slate-950 hover:bg-slate-900 text-slate-400 hover:text-teal-400 rounded-xl text-[10px] font-bold border border-slate-850 hover:border-teal-500/20 flex flex-col items-center gap-1.5 text-center transition-all hover:scale-105 cursor-pointer"
+                >
+                  <div className="p-1.5 rounded-lg bg-slate-900 border border-slate-800">
+                    {mood.icon}
+                  </div>
+                  <span className="truncate w-full">{mood.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Tracks Catalog Panel */}
+          <div className="glass-card p-6 rounded-[2rem] shadow-xl border border-slate-800/80">
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-800/50">
+              <h4 className="text-xs font-black text-slate-100 flex items-center gap-2 uppercase tracking-widest">
+                <ListMusic className="text-teal-405" size={16} />
+                Catalog List ({searchResults.length})
+              </h4>
+              <span className="text-[10px] font-bold text-slate-500">
+                Select to stream
+              </span>
+            </div>
+
+            {isLoading ? (
+              <div className="py-20 text-center text-teal-400 flex flex-col items-center gap-2">
+                <Loader2 size={32} className="animate-spin" />
+                <p className="font-bold text-[10px] tracking-widest uppercase">Loading catalog tracks...</p>
+              </div>
+            ) : searchResults.length === 0 ? (
+              <div className="py-16 text-center text-slate-500 flex flex-col items-center justify-center">
+                <Music size={36} className="text-slate-700 mb-2 animate-pulse" />
+                <p className="font-bold text-xs text-slate-400">No songs found for "{searchQuery}"</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">Try search terms like 'Lofi', 'Study Beats', or an artist's name.</p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1 scrollbar-thin">
+                {searchResults.map((track, idx) => {
+                  const isCurrent = currentTrack?.id === track.id;
+                  return (
+                    <div
+                      key={track.id}
+                      onClick={() => playTrack(track)}
+                      className={`p-3 rounded-xl flex items-center gap-3 cursor-pointer transition-all duration-200 border ${
+                        isCurrent
+                          ? 'bg-gradient-to-r from-teal-550/10 to-teal-650/15 border-teal-500/30 text-white shadow-sm'
+                          : 'bg-slate-950/40 hover:bg-slate-900/60 text-slate-400 hover:text-slate-200 border-slate-900/80 hover:border-slate-850'
+                      }`}
+                    >
+                      {/* Index */}
+                      <span className="w-5 text-center text-[10px] font-mono text-slate-550 font-bold">
+                        {String(idx + 1).padStart(2, '0')}
+                      </span>
+
+                      {/* Artwork */}
+                      <div className="relative w-10 h-10 flex-shrink-0 rounded-lg overflow-hidden shadow-md">
+                        <img
+                          src={track.artwork}
+                          alt={track.title}
+                          className="w-full h-full object-cover"
+                        />
+                        {isCurrent && isPlaying && (
+                          <div className="absolute inset-0 bg-black/45 flex items-center justify-center">
+                            <Disc size={14} className="text-teal-455 animate-spin" />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Song Details */}
+                      <div className="flex-1 min-w-0">
+                        <h5 className="font-bold text-xs uppercase tracking-wide truncate text-slate-200">
+                          {track.title}
+                        </h5>
+                        <p className={`text-[10px] font-bold truncate mt-0.5 ${isCurrent ? 'text-teal-455' : 'text-slate-550'}`}>
+                          {track.artist}
+                        </p>
+                      </div>
+
+                      {/* Genre Tag */}
+                      <span className={`hidden sm:inline-block text-[9px] uppercase font-black px-2 py-0.5 rounded-full ${
+                        isCurrent ? 'bg-teal-955/65 text-teal-400' : 'bg-slate-900 text-slate-655'
+                      }`}>
+                        {track.genre || 'Focus'}
+                      </span>
+
+                      {/* Duration */}
+                      <span className="text-[10px] font-mono font-bold text-slate-555">
+                        {formatSeconds(track.duration)}
+                      </span>
+
+                      {/* Inline play status */}
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                        isCurrent ? 'bg-teal-500 text-white' : 'bg-slate-900/80 text-teal-405 hover:scale-105'
+                      }`}>
+                        {isCurrent && isPlaying ? (
+                          <Disc size={14} className="animate-spin" />
+                        ) : (
+                          <Play size={12} fill="currentColor" className="ml-0.5" />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+  );
 }
