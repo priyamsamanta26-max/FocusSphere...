@@ -378,95 +378,109 @@ export function MusicProvider({ children }) {
     return () => clearTimeout(prefetchTimer);
   }, []);
 
-  // Play track using either HTMLAudio preview (preferred) or YouTube search playlist as fallback
-  const playTrack = (track) => {
+  // Resolve search term to a real YouTube video ID using Invidious racing
+  const resolveYTVideoId = async (track) => {
+    if (track.id && track.id.length === 11) return track.id;
+    if (ytUrlCacheRef.current[track.id]) return ytUrlCacheRef.current[track.id];
+
+    const q = `${track.title} ${track.artist} audio`;
+    
+    // Concurrently race Invidious instances to resolve the ID instantly
+    const fetchInstanceId = async (instance) => {
+      const url = `${instance}/api/v1/search?q=${encodeURIComponent(q)}&type=video`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout
+      try {
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.length > 0 && data[0].videoId) {
+            return data[0].videoId;
+          }
+        }
+        throw new Error('No videoId');
+      } catch (err) {
+        clearTimeout(timeoutId);
+        throw err;
+      }
+    };
+
+    try {
+      const promises = INVIDIOUS_INSTANCES.map((instance) => fetchInstanceId(instance));
+      const videoId = await Promise.any(promises);
+      if (videoId) {
+        ytUrlCacheRef.current[track.id] = videoId;
+        return videoId;
+      }
+    } catch (err) {
+      console.warn('Could not resolve video ID from Invidious:', err);
+    }
+    return null;
+  };
+
+  // Play track using background YouTube player stream for full-length support
+  const playTrack = async (track) => {
     if (!track) return;
 
     setCurrentTrack(track);
     setDuration(track.duration || 210);
     setCurrentTime(0);
+    setIsLoading(true);
 
-    // Pause YouTube if switching to audio
-    try {
-      const player = ytPlayerRef.current;
-      if (player && typeof player.pauseVideo === 'function') player.pauseVideo();
-    } catch (e) {}
-
-    // Pause HTMLAudio if switching to YouTube
-    try {
-      if (audioRef.current) audioRef.current.pause();
-    } catch (e) {}
-
-    // If iTunes provides a previewUrl, play via HTMLAudio for reliable playback
-    if (track.previewUrl) {
-      currentSourceRef.current = 'audio';
-      if (!audioRef.current) audioRef.current = new Audio();
-      const audio = audioRef.current;
-      try {
-        audio.src = track.previewUrl;
-        audio.currentTime = 0;
-        const p = audio.play();
-        if (p && typeof p.then === 'function') {
-          p.then(() => {
-            setIsPlaying(true);
-          }).catch((err) => {
-            console.warn('Audio preview play blocked:', err);
-            setIsPlaying(false);
-          });
-        } else {
-          setIsPlaying(true);
-        }
-      } catch (e) {
-        console.error('Audio preview error:', e);
-        setIsPlaying(false);
-      }
-
-      return;
-    }
-
-    // Fallback to YouTube playlist loading or direct video play
+    // Force YouTube background playback for all tracks (ensuring full-length audio stream)
     currentSourceRef.current = 'yt';
     setIsPlaying(true);
-    let player = ytPlayerRef.current;
 
-    const loadAndPlay = () => {
-      player = ytPlayerRef.current;
-      if (!player) return;
-      try {
-        // If we have a direct video id from Invidious search
-        if (track.id && track.id.length === 11) {
-          player.loadVideoById({
-            videoId: track.id,
-            suggestedQuality: 'small'
-          });
-        } else if (typeof player.loadPlaylist === 'function') {
-          player.loadPlaylist({
-            listType: 'search',
-            list: track.query || `${track.title} ${track.artist} audio`,
-            index: 0,
-            suggestedQuality: 'small'
-          });
+    try {
+      const videoId = await resolveYTVideoId(track);
+      setIsLoading(false);
+      
+      let player = ytPlayerRef.current;
+      const loadAndPlay = () => {
+        player = ytPlayerRef.current;
+        if (!player) return;
+        try {
+          if (videoId) {
+            player.loadVideoById({
+              videoId: videoId,
+              suggestedQuality: 'small'
+            });
+          } else {
+            // Hard fallback if resolution completely failed: try search query (listType: search)
+            if (typeof player.loadPlaylist === 'function') {
+              player.loadPlaylist({
+                listType: 'search',
+                list: track.query || `${track.title} ${track.artist} audio`,
+                index: 0,
+                suggestedQuality: 'small'
+              });
+            }
+          }
+          try { if (player && typeof player.playVideo === 'function') player.playVideo(); } catch (e) {}
+        } catch (err) {
+          console.error('Player load error:', err);
         }
-        try { if (player && typeof player.playVideo === 'function') player.playVideo(); } catch (e) {}
-      } catch (err) {
-        console.error('Player load error:', err);
-      }
-    };
+      };
 
-    if (player && isPlayerReadyRef.current) {
-      loadAndPlay();
-      return;
-    }
-
-    // Player not yet ready: poll until ready (timeout after 8s)
-    const waiter = setInterval(() => {
-      if (ytPlayerRef.current && isPlayerReadyRef.current) {
-        clearInterval(waiter);
+      if (player && isPlayerReadyRef.current) {
         loadAndPlay();
+        return;
       }
-    }, 300);
 
-    setTimeout(() => clearInterval(waiter), 8000);
+      // Player not yet ready: poll until ready (timeout after 8s)
+      const waiter = setInterval(() => {
+        if (ytPlayerRef.current && isPlayerReadyRef.current) {
+          clearInterval(waiter);
+          loadAndPlay();
+        }
+      }, 300);
+
+      setTimeout(() => clearInterval(waiter), 8000);
+    } catch (err) {
+      console.error('Error in playTrack resolution:', err);
+      setIsLoading(false);
+    }
   };
 
   const playRandomNextSong = () => {
@@ -488,12 +502,18 @@ export function MusicProvider({ children }) {
   };
 
   const togglePlayPause = () => {
-    if (currentSourceRef.current === 'audio' && audioRef.current) {
+    if (!currentTrack) {
+      if (searchResults.length > 0) playTrack(searchResults[0]);
+      return;
+    }
+
+    if (currentSourceRef.current === 'audio') {
+      const audio = audioRef.current;
       if (isPlaying) {
-        audioRef.current.pause();
+        audio.pause();
         setIsPlaying(false);
       } else {
-        audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+        audio.play().then(() => setIsPlaying(true)).catch(() => {});
       }
       return;
     }
