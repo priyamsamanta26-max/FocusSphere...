@@ -433,7 +433,7 @@ export function MusicProvider({ children }) {
     }
   }, [currentTrack, searchResults]);
 
-  // Play track using background YouTube player stream for full-length support
+  // Play track using HTML5 Audio element for perfect background autoplay across tabs
   const playTrack = async (track) => {
     if (!track) return;
 
@@ -442,58 +442,84 @@ export function MusicProvider({ children }) {
     setCurrentTime(0);
     setIsLoading(true);
 
-    // Force YouTube background playback for all tracks (ensuring full-length audio stream)
-    currentSourceRef.current = 'yt';
+    // Use HTML5 Audio as primary for perfect background autoplay across tabs
+    currentSourceRef.current = 'audio';
     setIsPlaying(true);
+
+    // Pause YouTube player if active
+    try {
+      const player = ytPlayerRef.current;
+      if (player && typeof player.pauseVideo === 'function') player.pauseVideo();
+    } catch (e) {}
 
     try {
       const videoId = await resolveYTVideoId(track);
-      setIsLoading(false);
+      if (!videoId) {
+        throw new Error("Could not resolve video ID");
+      }
+
+      // Pick a random instance as the primary, and keep the others as fallbacks
+      const shuffledInstances = [...INVIDIOUS_INSTANCES].sort(() => 0.5 - Math.random());
       
-      let player = ytPlayerRef.current;
-      const loadAndPlay = () => {
-        player = ytPlayerRef.current;
-        if (!player) return;
-        try {
-          if (videoId) {
-            player.loadVideoById({
-              videoId: videoId,
-              suggestedQuality: 'small'
-            });
-          } else {
-            // Hard fallback if resolution completely failed: try search query (listType: search)
-            if (typeof player.loadPlaylist === 'function') {
-              player.loadPlaylist({
-                listType: 'search',
-                list: track.query || `${track.title} ${track.artist} audio`,
-                index: 0,
-                suggestedQuality: 'small'
-              });
+      if (!audioRef.current) audioRef.current = new Audio();
+      const audio = audioRef.current;
+      audio.volume = volume;
+
+      let instanceIndex = 0;
+      const tryPlay = () => {
+        if (instanceIndex >= shuffledInstances.length) {
+          setIsLoading(false);
+          setIsPlaying(false);
+          console.error("All Invidious streaming instances failed.");
+          return;
+        }
+        const instance = shuffledInstances[instanceIndex];
+        const streamUrl = `${instance}/latest_version?id=${videoId}&listen=1`;
+        console.info(`Streaming from: ${streamUrl}`);
+        
+        // Temporarily bind error handler for this load attempt
+        const handleLoadError = () => {
+          audio.removeEventListener('error', handleLoadError);
+          audio.removeEventListener('canplay', handleCanPlay);
+          instanceIndex++;
+          tryPlay();
+        };
+
+        const handleCanPlay = () => {
+          audio.removeEventListener('error', handleLoadError);
+          audio.removeEventListener('canplay', handleCanPlay);
+          setIsLoading(false);
+        };
+
+        audio.addEventListener('error', handleLoadError);
+        audio.addEventListener('canplay', handleCanPlay);
+
+        audio.src = streamUrl;
+        audio.currentTime = 0;
+        const p = audio.play();
+        if (p && typeof p.then === 'function') {
+          p.then(() => {
+            setIsPlaying(true);
+          }).catch((err) => {
+            console.warn("Audio play blocked or failed:", err);
+            // Don't auto-retry on user-abort blocks
+            if (err.name !== 'NotAllowedError') {
+              handleLoadError();
+            } else {
+              setIsLoading(false);
             }
-          }
-          try { if (player && typeof player.playVideo === 'function') player.playVideo(); } catch (e) {}
-        } catch (err) {
-          console.error('Player load error:', err);
+          });
+        } else {
+          setIsPlaying(true);
         }
       };
 
-      if (player && isPlayerReadyRef.current) {
-        loadAndPlay();
-        return;
-      }
+      tryPlay();
 
-      // Player not yet ready: poll until ready (timeout after 8s)
-      const waiter = setInterval(() => {
-        if (ytPlayerRef.current && isPlayerReadyRef.current) {
-          clearInterval(waiter);
-          loadAndPlay();
-        }
-      }, 300);
-
-      setTimeout(() => clearInterval(waiter), 8000);
     } catch (err) {
       console.error('Error in playTrack resolution:', err);
       setIsLoading(false);
+      setIsPlaying(false);
     }
   };
 
