@@ -6,7 +6,7 @@ import {
   LayoutDashboard, CheckSquare, Timer, Bell, 
   GraduationCap, Calculator, Music, LogOut, Plus, 
   Play, Pause, Disc, Sparkles, ChevronRight, Loader2,
-  Menu, X
+  Menu, X, Gamepad2
 } from 'lucide-react';
 
 import { startLoudAlarm, stopLoudAlarm } from './utils/audioAlarm';
@@ -19,6 +19,7 @@ import Alarms from './views/Alarms';
 import Exams from './views/Exams';
 import SgpaCalc from './views/SgpaCalc';
 import FocusMusic from './views/Music';
+import FocusGames from './views/Games';
 import Auth from './views/Auth';
 
 function Sidebar({ onLogout, showMobile, closeMobile }) {
@@ -32,7 +33,8 @@ function Sidebar({ onLogout, showMobile, closeMobile }) {
     { num: '04', name: 'Smart Alarms', path: '/alarms', icon: <Bell size={16} /> },
     { num: '05', name: 'Exams planner', path: '/exams', icon: <GraduationCap size={16} /> },
     { num: '06', name: 'SGPA Calc', path: '/sgpa', icon: <Calculator size={16} /> },
-    { num: '07', name: 'Focus Music', path: '/music', icon: <Music size={16} /> }
+    { num: '07', name: 'Focus Music', path: '/music', icon: <Music size={16} /> },
+    { num: '08', name: 'Focus Games', path: '/games', icon: <Gamepad2 size={16} /> }
   ];
 
   const handleNavClick = (path) => {
@@ -47,7 +49,7 @@ function Sidebar({ onLogout, showMobile, closeMobile }) {
       {/* Brand & collapse */}
       <div className="p-6 flex items-center justify-between gap-3 select-none">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-teal-500 to-teal-600 flex items-center justify-center text-white font-extrabold">FS</div>
+          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-teal-500 to-teal-650 flex items-center justify-center text-white font-extrabold">FS</div>
           <div>
             <div className="text-sm font-extrabold text-slate-100">FocusSphere</div>
             <div className="text-xs text-slate-400">Student Focus Hub</div>
@@ -79,12 +81,12 @@ function Sidebar({ onLogout, showMobile, closeMobile }) {
 
       <div className="p-4 mt-auto border-t border-slate-800/60">
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 rounded bg-slate-800 flex items-center justify-center text-slate-200">{/* avatar */}
-            {/**/}
+          <div className="w-10 h-10 rounded bg-slate-800 flex items-center justify-center text-slate-200">
+            {/* avatar placeholder */}
           </div>
           <div className="flex-1">
             <div className="text-sm font-bold text-slate-100">User</div>
-            <div className="text-xs text-slate-505">Ready</div>
+            <div className="text-xs text-slate-500">Ready</div>
           </div>
         </div>
         <button onClick={onLogout} className="w-full py-3 rounded-lg bg-amber-500/10 hover:bg-amber-500/90 text-amber-500 hover:text-white transition-all"> <LogOut size={14} /> Logout</button>
@@ -99,7 +101,7 @@ function FloatingActionButton() {
     <button 
       onClick={() => navigate('/tasks')}
       title="Quick Add Task"
-      className="fixed bottom-8 right-8 w-14 h-14 bg-teal-600 hover:bg-teal-700 text-white rounded-full flex items-center justify-center shadow-xl shadow-teal-500/20 hover:scale-110 active:scale-95 transition-all z-30 animate-float"
+      className="fixed bottom-8 right-8 w-14 h-14 bg-teal-650 hover:bg-teal-700 text-white rounded-full flex items-center justify-center shadow-xl shadow-teal-500/20 hover:scale-110 active:scale-95 transition-all z-30 animate-float"
     >
       <Plus size={28} />
     </button>
@@ -202,7 +204,7 @@ function AlarmTriggerModal({ ringingAlarm, onDismiss }) {
 function MainLayout({ user, onLogout }) {
   const location = useLocation();
   const [ringingAlarm, setRingingAlarm] = useState(null);
-  const [triggeredIds, setTriggeredIds] = useState(new Set());
+  const [triggeredIds, setTriggeredIds] = useState(new Set()); 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const getTitle = () => {
@@ -214,6 +216,7 @@ function MainLayout({ user, onLogout }) {
       case '/exams': return 'Examination Planner';
       case '/sgpa': return 'SGPA & Performance Calculator';
       case '/music': return 'Focus Music Station';
+      case '/games': return 'Mind Focus Hub & Games';
       default: return 'FocusSphere';
     }
   };
@@ -273,7 +276,6 @@ function MainLayout({ user, onLogout }) {
     <div className="flex h-screen relative selection:bg-teal-950 selection:text-teal-300">
       <BackgroundBlobs />
       
-      {/* Mobile Drawer Overlay */}
       {isSidebarOpen && (
         <div 
           onClick={() => setIsSidebarOpen(false)}
@@ -284,7 +286,6 @@ function MainLayout({ user, onLogout }) {
       <Sidebar onLogout={onLogout} showMobile={isSidebarOpen} closeMobile={() => setIsSidebarOpen(false)} />
       
       <main className="md:ml-[20rem] ml-0 flex-1 p-4 md:p-8 overflow-y-auto h-screen relative z-10">
-        {/* Premium Frosted Header Panel */}
         <header className="glass-card rounded-3xl px-4 md:px-8 py-4 md:py-5.5 mb-8 flex justify-between items-center shadow-lg border border-teal-500/20">
           <div className="flex items-center gap-4">
             <button 
@@ -304,12 +305,12 @@ function MainLayout({ user, onLogout }) {
           </div>
           
           <div className="flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-teal-550 via-teal-650 to-teal-750 shadow-lg shadow-teal-500/20 flex items-center justify-center text-white font-black border-2 border-slate-700">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-teal-555 via-teal-650 to-teal-750 shadow-lg shadow-teal-500/20 flex items-center justify-center text-white font-black border-2 border-slate-700">
               {user.email ? user.email.charAt(0).toUpperCase() : 'U'}
             </div>
             <div className="hidden md:block">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Log in as</p>
-              <p className="text-xs font-bold text-slate-355 mt-0.5">{user.email}</p>
+              <p className="text-xs font-bold text-slate-350 mt-0.5">{user.email}</p>
             </div>
           </div>
         </header>
@@ -323,7 +324,7 @@ function MainLayout({ user, onLogout }) {
             <Route path="/exams" element={<Exams user={user} />} />
             <Route path="/sgpa" element={<SgpaCalc user={user} />} />
             <Route path="/music" element={<FocusMusic user={user} />} />
-            {/* Temporary preview route to view Dashboard without authentication */}
+            <Route path="/games" element={<FocusGames user={user} />} />
             <Route path="/preview-dashboard" element={<Dashboard user={{ email: 'preview@local', id: 'preview' }} />} />
             <Route path="*" element={<Dashboard user={user} />} />
           </Routes>
