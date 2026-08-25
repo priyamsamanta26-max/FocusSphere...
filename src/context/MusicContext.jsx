@@ -268,7 +268,7 @@ export function MusicProvider({ children }) {
             return data.results.map((item) => {
               const rawDuration = item.trackTimeMillis ? Math.round(item.trackTimeMillis / 1000) : 210;
               const artwork = item.artworkUrl100
-                ? item.artworkUrl105.replace('100x100bb', '600x600bb')
+                ? item.artworkUrl100.replace('100x100bb', '600x600bb')
                 : 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&q=80';
 
               return {
