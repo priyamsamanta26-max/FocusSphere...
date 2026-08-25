@@ -185,12 +185,18 @@ export function MusicProvider({ children }) {
     };
   }, []);
 
+  // List of public Invidious instances for robust search queries
   const INVIDIOUS_INSTANCES = [
     'https://yewtu.be',
     'https://invidious.lunar.icu',
     'https://invidious.projectsegfau.lt',
     'https://inv.tux.im',
-    'https://invidious.flokinet.to'
+    'https://invidious.flokinet.to',
+    'https://invidious.jing.rocks',
+    'https://invidious.privacydev.net',
+    'https://invidious.no-logs.com',
+    'https://invidious.perennialte.ch',
+    'https://invidious.nerdvpn.de'
   ];
 
   // Search songs globally
@@ -383,81 +389,107 @@ export function MusicProvider({ children }) {
     return () => clearTimeout(prefetchTimer);
   }, []);
 
+  // Helper to sanitize search strings for 100% reliable matching on YouTube
+  const cleanSearchQuery = (title, artist) => {
+    let cleanTitle = title.replace(/\([^)]*\)/g, '');
+    cleanTitle = cleanTitle.replace(/\[[^\]]*\]/g, '');
+    cleanTitle = cleanTitle.replace(/official\s+video|official\s+audio|lyric\s+video|remastered|remaster/gi, '');
+    
+    let cleanArtist = artist.replace(/\([^)]*\)/g, '').replace(/\[[^\]]*\]/g, '');
+    cleanArtist = cleanArtist.replace(/&|feat\.|ft\./gi, ' ');
+
+    return `${cleanTitle.trim()} ${cleanArtist.trim()} audio`.replace(/\s+/g, ' ').trim();
+  };
+
   // Resolve search term to a real YouTube video ID using Invidious racing
   const resolveYTVideoId = async (track) => {
     if (track.id && track.id.length === 11) return track.id;
     if (ytUrlCacheRef.current[track.id]) return ytUrlCacheRef.current[track.id];
 
-    const q = `${track.title} ${track.artist} audio`;
-    
-    // Concurrently race Invidious instances
-    const fetchInstanceId = async (instance) => {
-      const url = `${instance}/api/v1/search?q=${encodeURIComponent(q)}&type=video`;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout
-      try {
-        const res = await fetch(url, { signal: controller.signal });
-        clearTimeout(timeoutId);
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.length > 0 && data[0].videoId) {
-            return data[0].videoId;
+    // Concurrently race Invidious/Piped instances for a given query string
+    const raceInstances = async (searchQueryString) => {
+      const fetchInvidious = async (instance) => {
+        const url = `${instance}/api/v1/search?q=${encodeURIComponent(searchQueryString)}&type=video`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout
+        try {
+          const res = await fetch(url, { signal: controller.signal });
+          clearTimeout(timeoutId);
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.length > 0 && data[0].videoId) {
+              return data[0].videoId;
+            }
           }
+          throw new Error('No Invidious videoId');
+        } catch (err) {
+          clearTimeout(timeoutId);
+          throw err;
         }
-        throw new Error('No Invidious videoId');
-      } catch (err) {
-        clearTimeout(timeoutId);
-        throw err;
-      }
-    };
+      };
 
-    // Concurrently race Piped instances
-    const PIPED_INSTANCES = [
-      'https://pipedapi.kavin.rocks',
-      'https://pipedapi.tokhmi.xyz',
-      'https://pipedapi.leptons.xyz',
-      'https://pipedapi.privacydev.net'
-    ];
+      const PIPED_INSTANCES = [
+        'https://pipedapi.kavin.rocks',
+        'https://pipedapi.tokhmi.xyz',
+        'https://pipedapi.leptons.xyz',
+        'https://pipedapi.privacydev.net',
+        'https://pipedapi.col.re',
+        'https://pipedapi.swish.re'
+      ];
 
-    const fetchPipedId = async (instance) => {
-      const url = `${instance}/search?q=${encodeURIComponent(q)}&filter=videos`;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout
-      try {
-        const res = await fetch(url, { signal: controller.signal });
-        clearTimeout(timeoutId);
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.items && data.items.length > 0) {
-            const item = data.items[0];
-            if (item.url) {
-              const videoId = item.url.split('v=')[1];
-              if (videoId && videoId.length === 11) {
-                return videoId;
+      const fetchPiped = async (instance) => {
+        const url = `${instance}/search?q=${encodeURIComponent(searchQueryString)}&filter=videos`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout
+        try {
+          const res = await fetch(url, { signal: controller.signal });
+          clearTimeout(timeoutId);
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.items && data.items.length > 0) {
+              const item = data.items[0];
+              if (item.url) {
+                const videoId = item.url.split('v=')[1];
+                if (videoId && videoId.length === 11) {
+                  return videoId;
+                }
               }
             }
           }
+          throw new Error('No Piped videoId');
+        } catch (err) {
+          clearTimeout(timeoutId);
+          throw err;
         }
-        throw new Error('No Piped videoId');
-      } catch (err) {
-        clearTimeout(timeoutId);
-        throw err;
+      };
+
+      try {
+        const promises = [
+          ...INVIDIOUS_INSTANCES.map((inst) => fetchInvidious(inst)),
+          ...PIPED_INSTANCES.map((inst) => fetchPiped(inst))
+        ];
+        return await Promise.any(promises);
+      } catch (e) {
+        return null;
       }
     };
 
-    try {
-      const promises = [
-        ...INVIDIOUS_INSTANCES.map((instance) => fetchInstanceId(instance)),
-        ...PIPED_INSTANCES.map((instance) => fetchPipedId(instance))
-      ];
-      const videoId = await Promise.any(promises);
-      if (videoId) {
-        ytUrlCacheRef.current[track.id] = videoId;
-        return videoId;
-      }
-    } catch (err) {
-      console.warn('Could not resolve video ID from Invidious or Piped instances:', err);
+    // Try 1: Clean query (title + artist)
+    const q1 = cleanSearchQuery(track.title, track.artist);
+    let resolved = await raceInstances(q1);
+    if (resolved) {
+      ytUrlCacheRef.current[track.id] = resolved;
+      return resolved;
     }
+
+    // Try 2: Super simple query (just title)
+    const q2 = `${track.title.replace(/\([^)]*\)/g, '').replace(/\[[^\]]*\]/g, '').trim()} audio`;
+    resolved = await raceInstances(q2);
+    if (resolved) {
+      ytUrlCacheRef.current[track.id] = resolved;
+      return resolved;
+    }
+
     return null;
   };
 
