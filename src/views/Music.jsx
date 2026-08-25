@@ -1,10 +1,19 @@
 import React, { useState } from 'react';
-import { 
-  Search, Play, Pause, Shuffle, Disc, 
-  SkipForward, SkipBack, Music, Volume2, 
-  Repeat, Loader2, Heart, Sparkles, CheckCircle2
-} from 'lucide-react';
 import { useMusic } from '../context/MusicContext';
+import { 
+  Search, Play, Pause, SkipBack, SkipForward, 
+  Repeat, Shuffle, Volume2, VolumeX, Music, Disc, 
+  ListMusic, Clock, Loader2, Sparkles,
+  Flame, Moon, Sun, Wind, Coffee
+} from 'lucide-react';
+
+const MOODS = [
+  { name: 'Lofi Study', query: 'Lofi Chill Study Beats', icon: <Coffee size={12} className="text-amber-400" /> },
+  { name: 'Deep Focus', query: 'Deep Focus Ambient', icon: <Moon size={12} className="text-teal-455" /> },
+  { name: 'Rain Sounds', query: 'Rain Nature Soundscape', icon: <Wind size={12} className="text-teal-500" /> },
+  { name: 'Acoustic Study', query: 'Acoustic Instrumental Piano Guitar', icon: <Sun size={12} className="text-amber-500" /> },
+  { name: 'Synthwave Focus', query: 'Synthwave Study Chill', icon: <Flame size={12} className="text-rose-400" /> }
+];
 
 export default function FocusMusic() {
   const {
@@ -16,7 +25,6 @@ export default function FocusMusic() {
     volume,
     isAutoRandom,
     isLooping,
-    isAutoplay,
     isLoading,
     searchQuery,
     setSearchQuery,
@@ -27,7 +35,6 @@ export default function FocusMusic() {
     changeVolume,
     toggleLoop,
     toggleAutoRandom,
-    toggleAutoplay,
     unlockAudio,
     audioUnlocked,
     playNextTrack,
@@ -35,46 +42,41 @@ export default function FocusMusic() {
     playRandomNextSong
   } = useMusic();
 
-  const [inputVal, setInputVal] = useState(searchQuery);
+  const [inputVal, setInputVal] = useState(searchQuery || '');
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     if (inputVal.trim()) {
-      searchMusic(inputVal.trim());
+      setSearchQuery(inputVal);
+      searchMusic(inputVal);
     }
   };
 
-  const formatTime = (secs) => {
-    if (isNaN(secs)) return '0:00';
+  const handlePresetClick = (term) => {
+    setInputVal(term);
+    setSearchQuery(term);
+    searchMusic(term);
+  };
+
+  const formatSeconds = (secs) => {
+    if (isNaN(secs) || secs < 0) return '0:00';
     const m = Math.floor(secs / 60);
     const s = Math.floor(secs % 60);
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
   return (
-    <div className="space-y-8 animate-fade-in pb-12">
-      {/* Search Bar section */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-800/80">
-        <div className="flex-1 max-w-xl">
-          <form onSubmit={handleSearchSubmit} className="relative group">
-            <input
-              type="text"
-              placeholder="Search artist, lofi track, focus instrumentals..."
-              value={inputVal}
-              onChange={(e) => setInputVal(e.target.value)}
-              className="w-full bg-slate-900/90 hover:bg-slate-850 focus:bg-slate-950/90 text-slate-100 placeholder-slate-450 pl-14 pr-6 py-4.5 rounded-[2rem] border-2 border-slate-800 focus:border-teal-500/80 outline-none transition-all duration-300 shadow-inner text-sm font-semibold focus:shadow-teal-950/20"
-            />
-            <Search className="absolute left-5.5 top-1/2 -translate-y-1/2 text-slate-450 group-focus-within:text-teal-400 transition-colors" size={20} />
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="absolute right-3.5 top-1/2 -translate-y-1/2 bg-gradient-to-r from-teal-500 to-teal-650 hover:from-teal-500 hover:to-teal-600 disabled:from-slate-800 disabled:to-slate-850 text-white px-6 py-2.5 rounded-full font-black text-xs uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-md cursor-pointer select-none"
-            >
-              {isLoading ? <Loader2 size={12} className="animate-spin" /> : 'Search'}
-            </button>
-          </form>
-          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-3.5 ml-4">
-            Powered by Apple iTunes API & YouTube Web Services
+    <div className="max-w-7xl mx-auto space-y-8 pb-28 font-sans">
+      
+      {/* Page Header Title */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/60 pb-6">
+        <div>
+          <h2 className="text-3xl font-extrabold bg-gradient-to-r from-slate-100 to-teal-450 bg-clip-text text-transparent uppercase tracking-wider flex items-center gap-3">
+            <Music className="text-teal-405 animate-pulse" size={28} />
+            Focus Audio Hub
+          </h2>
+          <p className="text-slate-400 text-xs mt-1 font-semibold uppercase tracking-wider">
+            Stream full-length audio tracks, focus beats, and ambient soundscapes
           </p>
         </div>
 
@@ -82,23 +84,9 @@ export default function FocusMusic() {
           {/* Play random shortcut */}
           <button
             onClick={playRandomNextSong}
-            className="px-4.5 py-2.5 bg-gradient-to-r from-teal-500/10 to-teal-650/15 hover:from-teal-500 hover:to-teal-600 text-teal-350 hover:text-white rounded-2xl font-black text-xs flex items-center gap-1.5 border border-teal-500/20 transition-all hover:scale-105 cursor-pointer"
+            className="px-4.5 py-2.5 bg-gradient-to-r from-teal-500/10 to-teal-650/15 hover:from-teal-500 hover:to-teal-600 text-teal-355 hover:text-white rounded-2xl font-black text-xs flex items-center gap-1.5 border border-teal-500/20 transition-all hover:scale-105 cursor-pointer"
           >
             <Sparkles size={14} /> Play Random
-          </button>
-
-          {/* Autoplay Next toggle */}
-          <button
-            onClick={toggleAutoplay}
-            className={`px-4.5 py-2.5 rounded-2xl font-black text-xs flex items-center gap-2 transition-all duration-300 border cursor-pointer ${
-              isAutoplay 
-                ? 'bg-gradient-to-r from-teal-500 to-teal-650 text-white border-teal-500 shadow-lg shadow-teal-950/40' 
-                : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-850'
-            }`}
-            title="Automatically play the next song in list sequentially"
-          >
-            <Repeat size={14} className={isAutoplay ? 'animate-pulse' : ''} />
-            Autoplay: {isAutoplay ? 'ON' : 'OFF'}
           </button>
 
           {/* Auto Shuffle toggle */}
@@ -150,171 +138,325 @@ export default function FocusMusic() {
                     <div className="absolute inset-2 rounded-full border border-slate-900/20" />
                     <div className="absolute inset-4 rounded-full border border-slate-900/20" />
                     <div className="absolute inset-6 rounded-full border border-slate-900/20" />
-                    <div className="absolute w-14 h-14 bg-slate-900 border-4 border-slate-950 rounded-full" />
+                    <div className="absolute inset-8 rounded-full border border-slate-900/20" />
+                    <div className="w-14 h-14 rounded-full bg-teal-700 border-4 border-slate-900 flex items-center justify-center">
+                      <div className="w-3 h-3 rounded-full bg-slate-100" />
+                    </div>
                   </div>
 
-                  {/* Album Cover sleeve */}
-                  <div className={`relative w-44 h-44 rounded-2xl overflow-hidden shadow-2xl border-2 border-slate-800 z-10 transition-transform duration-500 ${
-                    isPlaying ? '-rotate-3 scale-98 shadow-teal-500/5' : 'rotate-0 scale-100'
-                  }`}>
-                    <img 
-                      src={currentTrack.artwork || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&q=80'} 
-                      alt={currentTrack.title} 
+                  {/* Album Art Cover (Sleeve) */}
+                  <div className="relative w-48 h-48 rounded-2xl overflow-hidden shadow-2xl border-4 border-slate-800/90 z-10 bg-slate-900">
+                    <img
+                      src={currentTrack.artwork || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&q=80'}
+                      alt={currentTrack.title}
                       className="w-full h-full object-cover"
                     />
-                    {isLoading && (
-                      <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm flex flex-col items-center justify-center text-teal-400 gap-2">
-                        <Loader2 size={24} className="animate-spin" />
-                        <span className="text-[9px] font-black uppercase tracking-widest font-mono">Caching Stream</span>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+                    
+                    {/* Visualizer bars */}
+                    {isPlaying && (
+                      <div className="absolute bottom-3 left-3 right-3 flex items-end justify-center gap-1 h-8 pointer-events-none">
+                        {[...Array(6)].map((_, i) => (
+                          <span 
+                            key={i} 
+                            className="w-1 bg-teal-400 rounded-full animate-bounce"
+                            style={{ 
+                              height: '100%',
+                              animationDuration: `${0.5 + i * 0.12}s`,
+                              animationDelay: `${i * 0.04}s`
+                            }}
+                          />
+                        ))}
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* Meta details */}
-                <div className="space-y-1 select-none">
-                  <h3 className="text-xl font-extrabold text-slate-100 tracking-tight leading-snug truncate max-w-[280px]">
+                {/* Metadata */}
+                <div className="w-full">
+                  <span className="text-[9px] font-black uppercase tracking-widest px-2.5 py-1 bg-teal-950/60 border border-teal-500/20 text-teal-400 rounded-full">
+                    {currentTrack.genre || 'Exact Match'}
+                  </span>
+                  <h3 className="text-lg font-bold text-slate-100 mt-3 truncate px-4 uppercase tracking-wide">
                     {currentTrack.title}
                   </h3>
-                  <p className="text-teal-400 text-sm font-bold truncate max-w-[240px]">
+                  <p className="text-xs font-bold text-teal-400 mt-0.5 truncate">
                     {currentTrack.artist}
                   </p>
-                  <span className="inline-block text-[9px] font-black uppercase tracking-wider text-slate-500 bg-slate-950/65 px-3 py-1 rounded-full border border-slate-800/80">
-                    {currentTrack.album || 'Single'}
-                  </span>
+                  <p className="text-[10px] text-slate-500 font-semibold mt-1 uppercase tracking-wider truncate">
+                    Source: {currentTrack.album}
+                  </p>
                 </div>
 
-                {/* Progress bar Slider */}
+                {/* Equalizer Audio Waves */}
+                <div className="h-8 flex items-center justify-center gap-0.5 w-full max-w-[240px]">
+                  {[...Array(24)].map((_, i) => {
+                    const baseHeight = 6 + Math.sin(i * 0.8) * 6;
+                    return (
+                      <div
+                        key={i}
+                        className={`w-0.5 rounded-full transition-all duration-350 ${
+                          isPlaying ? 'bg-teal-400 animate-pulse' : 'bg-slate-700'
+                        }`}
+                        style={{
+                          height: isPlaying ? `${Math.max(4, Math.random() * 20 + 4)}px` : `${baseHeight}px`,
+                          animationDelay: `${i * 0.03}s`,
+                          animationDuration: '0.7s'
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+
+                {/* Progress Slider */}
                 <div className="w-full space-y-2">
-                  <input
-                    type="range"
-                    min="0"
-                    max={duration || 100}
-                    value={currentTime || 0}
-                    onChange={(e) => seekTime && seekTime(parseFloat(e.target.value))}
-                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-teal-500 focus:outline-none"
-                  />
-                  <div className="flex justify-between text-[11px] font-black text-slate-450 font-mono">
-                    <span>{formatTime(currentTime)}</span>
-                    <span>{formatTime(duration)}</span>
+                  <div className="flex justify-between text-[10px] font-mono font-bold text-slate-400 px-1">
+                    <span>{formatSeconds(currentTime)}</span>
+                    <span>{formatSeconds(duration || currentTrack.duration || 210)}</span>
                   </div>
-                </div>
-
-                {/* Core Player Controls deck */}
-                <div className="flex items-center gap-6.5 justify-center">
-                  <button 
-                    onClick={playPrevTrack}
-                    className="p-3 text-slate-400 hover:text-teal-450 hover:bg-slate-850/60 rounded-full transition-all active:scale-90 cursor-pointer"
-                  >
-                    <SkipBack size={20} fill="currentColor" />
-                  </button>
-
-                  <button 
-                    onClick={togglePlayPause}
-                    className="w-16 h-16 rounded-full bg-gradient-to-br from-teal-500 via-teal-600 to-teal-700 text-white flex items-center justify-center shadow-xl shadow-teal-500/20 hover:scale-108 active:scale-95 transition-all cursor-pointer"
-                  >
-                    {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" className="ml-1" />}
-                  </button>
-
-                  <button 
-                    onClick={playNextTrack}
-                    className="p-3 text-slate-400 hover:text-teal-450 hover:bg-slate-850/60 rounded-full transition-all active:scale-90 cursor-pointer"
-                  >
-                    <SkipForward size={20} fill="currentColor" />
-                  </button>
-                </div>
-
-                {/* Volume slider control */}
-                <div className="w-full flex items-center gap-3 pt-3 border-t border-slate-800/40">
-                  <Volume2 size={16} className="text-slate-450 flex-shrink-0" />
                   <input
                     type="range"
                     min="0"
-                    max="1"
-                    step="0.05"
-                    value={volume}
-                    onChange={(e) => changeVolume(parseFloat(e.target.value))}
-                    className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-teal-500 focus:outline-none"
+                    max={duration || currentTrack.duration || 210}
+                    step="1"
+                    value={currentTime || 0}
+                    onChange={(e) => seekTime(parseFloat(e.target.value))}
+                    className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-teal-500 hover:accent-teal-400 outline-none"
                   />
-                  <span className="text-[10px] font-bold text-slate-450 font-mono w-8 text-right">
-                    {Math.round(volume * 100)}%
-                  </span>
+                </div>
+
+                {/* Player Controllers */}
+                <div className="w-full flex items-center justify-between pt-2">
+                  {/* Loop */}
+                  <button
+                    onClick={toggleLoop}
+                    className={`p-3 rounded-xl transition-all duration-300 border cursor-pointer ${
+                      isLooping 
+                        ? 'bg-teal-500/10 text-teal-450 border-teal-500/30 shadow' 
+                        : 'bg-slate-900/60 text-slate-500 border-slate-850 hover:text-slate-300'
+                    }`}
+                    title={isLooping ? 'Loop Enabled' : 'Loop Off'}
+                  >
+                    <Repeat size={16} />
+                  </button>
+
+                  {/* Navigation Controls */}
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={playPrevTrack}
+                      className="p-3 bg-slate-900/80 hover:bg-slate-805 text-slate-300 hover:text-teal-405 rounded-xl border border-slate-800 transition-all hover:scale-105 cursor-pointer"
+                      title="Previous Track"
+                    >
+                      <SkipBack size={16} />
+                    </button>
+
+                    <button
+                      onClick={togglePlayPause}
+                      className="w-12 h-12 bg-teal-650 hover:bg-teal-700 text-white rounded-full flex items-center justify-center shadow-lg shadow-teal-500/20 hover:scale-110 active:scale-95 transition-all cursor-pointer"
+                      title={isPlaying ? 'Pause' : 'Play'}
+                    >
+                      {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" className="ml-0.5" />}
+                    </button>
+
+                    <button
+                      onClick={playNextTrack}
+                      className="p-3 bg-slate-900/80 hover:bg-slate-805 text-slate-300 hover:text-teal-405 rounded-xl border border-slate-800 transition-all hover:scale-105 cursor-pointer"
+                      title="Next Track"
+                    >
+                      <SkipForward size={16} />
+                    </button>
+                  </div>
+
+                  {/* Volume Slider */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => changeVolume(volume === 0 ? 0.85 : 0)}
+                      className="text-slate-550 hover:text-teal-400 transition-all cursor-pointer"
+                    >
+                      {volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                    </button>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={volume}
+                      onChange={(e) => changeVolume(parseFloat(e.target.value))}
+                      className="w-16 h-1 bg-slate-855 rounded-lg appearance-none cursor-pointer accent-teal-500"
+                    />
+                  </div>
                 </div>
 
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center py-16 text-center text-slate-500 gap-4 select-none">
-                <Music size={48} className="text-slate-700 animate-pulse" />
-                <p className="text-sm font-bold uppercase tracking-wider">No active track selected</p>
+              <div className="py-20 text-center text-slate-500 flex flex-col items-center justify-center gap-3">
+                <Music size={40} className="text-slate-700 mb-1 animate-pulse" />
+                <p className="font-bold text-xs uppercase tracking-wider text-slate-400">No active track selected</p>
+                <p className="text-[10px]">Select a song from the list to start streaming.</p>
               </div>
             )}
           </div>
         </div>
 
-        {/* Right Column: Search Results list */}
-        <div className="lg:col-span-7 glass-card p-6 rounded-[2.5rem] border border-teal-500/10">
-          <div className="flex justify-between items-center mb-5 px-2 select-none">
-            <h4 className="text-xs font-black uppercase tracking-widest text-slate-400">Search Results</h4>
-            <span className="text-[10px] font-black uppercase tracking-widest text-teal-400 bg-teal-950/60 px-3 py-1 rounded-full border border-teal-500/25 flex items-center gap-1.5">
-              <CheckCircle2 size={10} /> {searchResults.length} Songs Loaded
-            </span>
-          </div>
-
-          <div className="space-y-2.5 max-h-[500px] overflow-y-auto pr-1">
-            {searchResults.map((track) => {
-              const isCurrent = currentTrack?.id === track.id;
-              return (
-                <div
-                  key={track.id}
-                  onClick={() => playTrack(track)}
-                  className={`group p-3.5 rounded-2xl border flex items-center justify-between cursor-pointer transition-all duration-300 hover:scale-[1.01] ${
-                    isCurrent
-                      ? 'bg-teal-950/30 border-teal-500/35 shadow-lg shadow-teal-950/20'
-                      : 'bg-slate-900/60 border-slate-850 hover:bg-slate-850/80 hover:border-slate-800'
-                  }`}
-                >
-                  <div className="flex items-center gap-4 min-w-0">
-                    {/* Small Art preview */}
-                    <div className="relative w-12 h-12 rounded-xl overflow-hidden shadow-inner flex-shrink-0 border border-slate-800">
-                      <img 
-                        src={track.artwork || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=100&q=80'} 
-                        alt={track.title} 
-                        className="w-full h-full object-cover" 
-                      />
-                      {isCurrent && isPlaying && (
-                        <div className="absolute inset-0 bg-teal-950/60 flex items-center justify-center">
-                          <Disc size={16} className="text-teal-400 animate-spin" style={{ animationDuration: '4s' }} />
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="min-w-0 select-none">
-                      <p className={`text-sm font-bold truncate group-hover:text-teal-400 transition-colors max-w-[240px] md:max-w-[340px] ${
-                        isCurrent ? 'text-teal-350' : 'text-slate-100'
-                      }`}>
-                        {track.title}
-                      </p>
-                      <p className="text-xs font-semibold text-slate-450 truncate mt-0.5 max-w-[200px]">
-                        {track.artist}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-bold text-slate-500 font-mono select-none">
-                      {formatTime(track.duration)}
-                    </span>
-                    <button className="p-2 text-slate-650 hover:text-rose-500 transition-colors">
-                      <Heart size={14} />
-                    </button>
-                  </div>
+        {/* Right Column: Search, Moods & Tracks Catalog */}
+        <div className="lg:col-span-7 space-y-6">
+          
+          {/* Search Panel */}
+          <div className="glass-card p-6 rounded-[2rem] shadow-xl border border-slate-800/80">
+            <form onSubmit={handleSearchSubmit} className="relative w-full">
+              <div className="relative flex items-center bg-slate-950 border border-slate-850 rounded-2xl p-1.5 focus-within:border-teal-500/80 focus-within:ring-4 focus-within:ring-teal-950/40 transition-all duration-300 group">
+                <div className="flex items-center gap-2 pl-3 select-none">
+                  <span className="text-[9px] font-black tracking-widest text-teal-405 bg-teal-950/80 border border-teal-500/20 px-2 py-0.5 rounded-md uppercase">
+                    Audio
+                  </span>
+                  <span className="text-slate-700 font-bold text-xs">/</span>
                 </div>
-              );
-            })}
+                <input
+                  type="text"
+                  value={inputVal}
+                  onChange={(e) => setInputVal(e.target.value)}
+                  placeholder="Search any song, artist, band, album..."
+                  className="flex-1 min-w-0 bg-transparent py-2.5 px-3 outline-none text-slate-100 font-bold placeholder:text-slate-650 text-xs"
+                />
+                <div className="flex items-center gap-2 pr-1">
+                  {inputVal && (
+                    <button
+                      type="button"
+                      onClick={() => setInputVal('')}
+                      className="p-2 text-slate-500 hover:text-slate-300 transition-colors cursor-pointer text-[10px] font-black"
+                    >
+                      ✕
+                    </button>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="h-9 px-4.5 bg-gradient-to-r from-teal-550 to-teal-650 hover:from-teal-500 hover:to-teal-600 text-white rounded-xl font-black text-xs flex items-center gap-1.5 shadow-md shadow-teal-955/20 transition-all hover:scale-103 active:scale-97 disabled:opacity-50 cursor-pointer"
+                  >
+                    {isLoading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+                    <span>Find</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+
+            {/* Grid Mood Board */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-4">
+              {MOODS.map((mood) => (
+                <button
+                  key={mood.name}
+                  type="button"
+                  onClick={() => handlePresetClick(mood.query)}
+                  className="p-2.5 bg-slate-950 hover:bg-slate-900 text-slate-400 hover:text-teal-400 rounded-xl text-[10px] font-bold border border-slate-850 hover:border-teal-500/20 flex flex-col items-center gap-1.5 text-center transition-all hover:scale-105 cursor-pointer"
+                >
+                  <div className="p-1.5 rounded-lg bg-slate-900 border border-slate-800">
+                    {mood.icon}
+                  </div>
+                  <span className="truncate w-full">{mood.name}</span>
+                </button>
+              ))}
+            </div>
           </div>
+
+          {/* Tracks Catalog Panel */}
+          <div className="glass-card p-6 rounded-[2rem] shadow-xl border border-slate-800/80">
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-800/50">
+              <h4 className="text-xs font-black text-slate-100 flex items-center gap-2 uppercase tracking-widest">
+                <ListMusic className="text-teal-405" size={16} />
+                Catalog List ({searchResults.length})
+              </h4>
+              <span className="text-[10px] font-bold text-slate-500">
+                Select to stream
+              </span>
+            </div>
+
+            {isLoading ? (
+              <div className="py-20 text-center text-teal-400 flex flex-col items-center gap-2">
+                <Loader2 size={32} className="animate-spin" />
+                <p className="font-bold text-[10px] tracking-widest uppercase">Loading catalog tracks...</p>
+              </div>
+            ) : searchResults.length === 0 ? (
+              <div className="py-16 text-center text-slate-500 flex flex-col items-center justify-center">
+                <Music size={36} className="text-slate-700 mb-2 animate-pulse" />
+                <p className="font-bold text-xs text-slate-400">No songs found for "{searchQuery}"</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">Try search terms like 'Lofi', 'Study Beats', or an artist's name.</p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1 scrollbar-thin">
+                {searchResults.map((track, idx) => {
+                  const isCurrent = currentTrack?.id === track.id;
+                  return (
+                    <div
+                      key={track.id}
+                      onClick={() => playTrack(track)}
+                      className={`p-3 rounded-xl flex items-center gap-3 cursor-pointer transition-all duration-200 border ${
+                        isCurrent
+                          ? 'bg-gradient-to-r from-teal-550/10 to-teal-650/15 border-teal-500/30 text-white shadow-sm'
+                          : 'bg-slate-950/40 hover:bg-slate-900/60 text-slate-400 hover:text-slate-200 border-slate-900/80 hover:border-slate-850'
+                      }`}
+                    >
+                      {/* Index */}
+                      <span className="w-5 text-center text-[10px] font-mono text-slate-550 font-bold">
+                        {String(idx + 1).padStart(2, '0')}
+                      </span>
+
+                      {/* Artwork */}
+                      <div className="relative w-10 h-10 flex-shrink-0 rounded-lg overflow-hidden shadow-md">
+                        <img
+                          src={track.artwork}
+                          alt={track.title}
+                          className="w-full h-full object-cover"
+                        />
+                        {isCurrent && isPlaying && (
+                          <div className="absolute inset-0 bg-black/45 flex items-center justify-center">
+                            <Disc size={14} className="text-teal-455 animate-spin" />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Song Details */}
+                      <div className="flex-1 min-w-0">
+                        <h5 className="font-bold text-xs uppercase tracking-wide truncate text-slate-200">
+                          {track.title}
+                        </h5>
+                        <p className={`text-[10px] font-bold truncate mt-0.5 ${isCurrent ? 'text-teal-455' : 'text-slate-550'}`}>
+                          {track.artist}
+                        </p>
+                      </div>
+
+                      {/* Genre Tag */}
+                      <span className={`hidden sm:inline-block text-[9px] uppercase font-black px-2 py-0.5 rounded-full ${
+                        isCurrent ? 'bg-teal-955/65 text-teal-400' : 'bg-slate-900 text-slate-655'
+                      }`}>
+                        {track.genre || 'Focus'}
+                      </span>
+
+                      {/* Duration */}
+                      <span className="text-[10px] font-mono font-bold text-slate-555">
+                        {formatSeconds(track.duration)}
+                      </span>
+
+                      {/* Inline play status */}
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                        isCurrent ? 'bg-teal-500 text-white' : 'bg-slate-900/80 text-teal-405 hover:scale-105'
+                      }`}>
+                        {isCurrent && isPlaying ? (
+                          <Disc size={14} className="animate-spin" />
+                        ) : (
+                          <Play size={12} fill="currentColor" className="ml-0.5" />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
         </div>
 
       </div>
+
     </div>
   );
 }
