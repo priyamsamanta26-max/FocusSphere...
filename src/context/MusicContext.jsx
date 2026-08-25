@@ -390,7 +390,7 @@ export function MusicProvider({ children }) {
 
     const q = `${track.title} ${track.artist} audio`;
     
-    // Concurrently race Invidious instances to resolve the ID instantly
+    // Concurrently race Invidious instances
     const fetchInstanceId = async (instance) => {
       const url = `${instance}/api/v1/search?q=${encodeURIComponent(q)}&type=video`;
       const controller = new AbortController();
@@ -404,7 +404,41 @@ export function MusicProvider({ children }) {
             return data[0].videoId;
           }
         }
-        throw new Error('No videoId');
+        throw new Error('No Invidious videoId');
+      } catch (err) {
+        clearTimeout(timeoutId);
+        throw err;
+      }
+    };
+
+    // Concurrently race Piped instances
+    const PIPED_INSTANCES = [
+      'https://pipedapi.kavin.rocks',
+      'https://pipedapi.tokhmi.xyz',
+      'https://pipedapi.leptons.xyz',
+      'https://pipedapi.privacydev.net'
+    ];
+
+    const fetchPipedId = async (instance) => {
+      const url = `${instance}/search?q=${encodeURIComponent(q)}&filter=videos`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout
+      try {
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.items && data.items.length > 0) {
+            const item = data.items[0];
+            if (item.url) {
+              const videoId = item.url.split('v=')[1];
+              if (videoId && videoId.length === 11) {
+                return videoId;
+              }
+            }
+          }
+        }
+        throw new Error('No Piped videoId');
       } catch (err) {
         clearTimeout(timeoutId);
         throw err;
@@ -412,14 +446,17 @@ export function MusicProvider({ children }) {
     };
 
     try {
-      const promises = INVIDIOUS_INSTANCES.map((instance) => fetchInstanceId(instance));
+      const promises = [
+        ...INVIDIOUS_INSTANCES.map((instance) => fetchInstanceId(instance)),
+        ...PIPED_INSTANCES.map((instance) => fetchPipedId(instance))
+      ];
       const videoId = await Promise.any(promises);
       if (videoId) {
         ytUrlCacheRef.current[track.id] = videoId;
         return videoId;
       }
     } catch (err) {
-      console.warn('Could not resolve video ID from Invidious:', err);
+      console.warn('Could not resolve video ID from Invidious or Piped instances:', err);
     }
     return null;
   };
@@ -465,12 +502,37 @@ export function MusicProvider({ children }) {
       if (!player) return;
       try {
         if (resolvedId) {
+          currentSourceRef.current = 'yt';
           player.loadVideoById({
             videoId: resolvedId,
             suggestedQuality: 'small'
           });
+          try { if (player && typeof player.playVideo === 'function') player.playVideo(); } catch (e) {}
+        } else if (track.previewUrl) {
+          // Play 30-sec preview clip fallback via HTML5 Audio
+          console.warn("YouTube resolution failed. Falling back to iTunes previewUrl.");
+          currentSourceRef.current = 'audio';
+          
+          if (!audioRef.current) audioRef.current = new Audio();
+          const audio = audioRef.current;
+          audio.src = track.previewUrl;
+          audio.volume = volume;
+          audio.currentTime = 0;
+          
+          // Pause YouTube player if active
+          try {
+            if (player && typeof player.pauseVideo === 'function') player.pauseVideo();
+          } catch (e) {}
+
+          audio.play().then(() => {
+            setIsPlaying(true);
+          }).catch((err) => {
+            console.error("Preview audio play failed:", err);
+            setIsPlaying(false);
+          });
         } else {
-          // Hard fallback if resolution completely failed: try search query (listType: search)
+          // Final absolute fallback if no previewUrl: try playPlaylist search query
+          currentSourceRef.current = 'yt';
           if (typeof player.loadPlaylist === 'function') {
             player.loadPlaylist({
               listType: 'search',
@@ -479,8 +541,8 @@ export function MusicProvider({ children }) {
               suggestedQuality: 'small'
             });
           }
+          try { if (player && typeof player.playVideo === 'function') player.playVideo(); } catch (e) {}
         }
-        try { if (player && typeof player.playVideo === 'function') player.playVideo(); } catch (e) {}
       } catch (err) {
         console.error('Player load error:', err);
       }
