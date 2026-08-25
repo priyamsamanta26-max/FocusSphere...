@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { Target, Clock, Trophy } from 'lucide-react';
 
@@ -15,7 +15,7 @@ function Sparkline({ data = [], width = 400, height = 80, stroke = '#3dd3d9' }) 
   const areaPts = `0,${height} ${pts} ${width},${height}`;
 
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+    <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
       <polyline points={pts} fill="none" stroke={stroke} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
       <polygon points={areaPts} fill="rgba(61,211,217,0.06)" />
     </svg>
@@ -101,15 +101,15 @@ export default function Dashboard({ user }) {
   }
 
   return (
-    <div className="dashboard-ui p-8">
+    <div className="dashboard-ui p-4 sm:p-8">
       <div className="container space-y-6">
-        <header className="flex items-center justify-between">
+        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="display-oversize">Dashboard</h1>
             <p className="text-slate-400">Your non-interactive progress overview</p>
           </div>
 
-          <div className="text-right">
+          <div className="text-left sm:text-right">
             <div className="text-sm font-mono text-slate-400">
               {now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
             </div>
