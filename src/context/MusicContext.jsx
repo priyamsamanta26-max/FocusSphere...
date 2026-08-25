@@ -561,27 +561,43 @@ export function MusicProvider({ children }) {
       player = ytPlayerRef.current;
       if (!player) return;
       try {
-        currentSourceRef.current = 'yt';
         if (resolvedId) {
+          currentSourceRef.current = 'yt';
           player.loadVideoById({
             videoId: resolvedId,
             suggestedQuality: 'small'
           });
           try { if (player && typeof player.playVideo === 'function') player.playVideo(); } catch (e) {}
+        } else if (track.previewUrl) {
+          // Play 30-sec preview clip fallback via HTML5 Audio
+          console.warn("YouTube resolution failed. Falling back to iTunes previewUrl.");
+          currentSourceRef.current = 'audio';
+          
+          if (!audioRef.current) audioRef.current = new Audio();
+          const audio = audioRef.current;
+          audio.src = track.previewUrl;
+          audio.volume = volume;
+          audio.currentTime = 0;
+          
+          // Pause YouTube player if active
+          try {
+            if (player && typeof player.pauseVideo === 'function') player.pauseVideo();
+          } catch (e) {}
+
+          audio.play().then(() => {
+            setIsPlaying(true);
+          }).catch((err) => {
+            console.error("Preview audio play failed:", err);
+            setIsPlaying(false);
+          });
         } else {
-          // Fallback to server-side playlist search of the clean search query (always full length)
-          const searchQueryString = cleanSearchQuery(track.title, track.artist);
+          // Final absolute fallback if no previewUrl: try playPlaylist search query
+          currentSourceRef.current = 'yt';
           if (typeof player.loadPlaylist === 'function') {
             player.loadPlaylist({
               listType: 'search',
-              list: searchQueryString,
+              list: track.query || `${track.title} ${track.artist} audio`,
               index: 0,
-              suggestedQuality: 'small'
-            });
-          } else {
-            // Hard fallback: load default track ID
-            player.loadVideoById({
-              videoId: 'jfKfPfyJRdk',
               suggestedQuality: 'small'
             });
           }
