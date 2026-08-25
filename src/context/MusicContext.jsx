@@ -1,20 +1,61 @@
 import React, { createContext, useContext, useState, useRef, useEffect } from 'react';
 
+const DEFAULT_TRACK = {
+  id: 'jfKfPfyJRdk',
+  title: 'Lofi Study Chill Beats',
+  artist: 'Lofi Focus',
+  album: 'FocusSphere Radio',
+  artwork: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&q=80',
+  genre: 'Lofi',
+  duration: 210,
+  previewUrl: null,
+  query: 'Lofi Study Chill Beats'
+};
+
 const MusicContext = createContext();
 
 export function MusicProvider({ children }) {
   const [searchResults, setSearchResults] = useState([]);
-  const [currentTrack, setCurrentTrack] = useState(null);
+  const [currentTrack, setCurrentTrack] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fs_current_track');
+      const parsed = saved ? JSON.parse(saved) : null;
+      return parsed && typeof parsed === 'object' && typeof parsed.id === 'string'
+        ? { ...DEFAULT_TRACK, ...parsed }
+        : DEFAULT_TRACK;
+    } catch (e) {
+      return DEFAULT_TRACK;
+    }
+  });
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(210);
+  const [duration, setDuration] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fs_current_track');
+      if (saved) {
+        const track = JSON.parse(saved);
+        return track.duration || 210;
+      }
+    } catch (e) {}
+    return DEFAULT_TRACK.duration;
+  });
   const [volume, setVolume] = useState(0.85);
   const [isAutoRandom, setIsAutoRandom] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
   const [isAutoplay, setIsAutoplay] = useState(true);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isPlayerLoading, setIsPlayerLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('Lofi Study Chill');
   const [audioUnlocked, setAudioUnlocked] = useState(false);
+
+  // Sync currentTrack change to localStorage
+  useEffect(() => {
+    if (currentTrack) {
+      try {
+        localStorage.setItem('fs_current_track', JSON.stringify(currentTrack));
+      } catch (e) {}
+    }
+  }, [currentTrack]);
 
   const ytPlayerRef = useRef(null);
   const isPlayerReadyRef = useRef(false);
@@ -23,12 +64,12 @@ export function MusicProvider({ children }) {
   const isAutoRandomRef = useRef(false);
   const isLoopingRef = useRef(false);
   const isAutoplayRef = useRef(true);
-  // HTMLAudio fallback for reliable playback (iTunes previewUrl)
   const audioRef = useRef(null);
-  const currentSourceRef = useRef('yt'); // 'yt' or 'audio'
+  const currentSourceRef = useRef('yt');
   const audioReadyRef = useRef(false);
   const searchCacheRef = useRef({});
   const ytUrlCacheRef = useRef({});
+  const searchRequestRef = useRef(0);
   searchResultsRef.current = searchResults;
   currentTrackRef.current = currentTrack;
   isAutoRandomRef.current = isAutoRandom;
@@ -60,14 +101,29 @@ export function MusicProvider({ children }) {
             onReady: (event) => {
               isPlayerReadyRef.current = true;
               event.target.setVolume(Math.round(volume * 100));
+              setIsPlayerLoading(false);
+            },
+            onError: (event) => {
+              console.warn('YouTube playback error:', event.data);
+              setIsPlaying(false);
+              setIsPlayerLoading(false);
+            },
+            onAutoplayBlocked: () => {
+              console.warn('YouTube autoplay was blocked. Use the Enable Sound button.');
+              setIsPlaying(false);
+              setIsPlayerLoading(false);
             },
             onStateChange: (event) => {
               // 1 = PLAYING, 2 = PAUSED, 0 = ENDED
               if (event.data === 1) {
                 setIsPlaying(true);
+                setIsPlayerLoading(false);
               } else if (event.data === 2) {
                 setIsPlaying(false);
+                setIsPlayerLoading(false);
               } else if (event.data === 0) {
+                setIsPlaying(false);
+                setIsPlayerLoading(false);
                 if (isLoopingRef.current) {
                   event.target.seekTo(0);
                   event.target.playVideo();
@@ -89,19 +145,17 @@ export function MusicProvider({ children }) {
       initPlayer();
     } else {
       window.onYouTubeIframeAPIReady = initPlayer;
-      
-      // Poll as a fallback in case onYouTubeIframeAPIReady is missed
+
       checkInterval = setInterval(() => {
         attempts++;
         if (window.YT && window.YT.Player) {
           initPlayer();
         }
-        if (attempts > 50) { // Stop after 5 seconds
+        if (attempts > 50) {
           clearInterval(checkInterval);
         }
       }, 100);
 
-      // Load YouTube API script if not loaded
       if (!document.getElementById('yt-iframe-script')) {
         const tag = document.createElement('script');
         tag.id = 'yt-iframe-script';
@@ -143,7 +197,7 @@ export function MusicProvider({ children }) {
     };
   }, []);
 
-  // HTMLAudio fallback and event wiring for previews
+  // HTMLAudio fallback and event wiring
   useEffect(() => {
     if (!audioRef.current) audioRef.current = new Audio();
     const audio = audioRef.current;
@@ -185,12 +239,18 @@ export function MusicProvider({ children }) {
     };
   }, []);
 
+  // List of public Invidious instances for robust search queries
   const INVIDIOUS_INSTANCES = [
     'https://yewtu.be',
     'https://invidious.lunar.icu',
     'https://invidious.projectsegfau.lt',
     'https://inv.tux.im',
-    'https://invidious.flokinet.to'
+    'https://invidious.flokinet.to',
+    'https://invidious.jing.rocks',
+    'https://invidious.privacydev.net',
+    'https://invidious.no-logs.com',
+    'https://invidious.perennialte.ch',
+    'https://invidious.nerdvpn.de'
   ];
 
   // Search songs globally
@@ -198,31 +258,26 @@ export function MusicProvider({ children }) {
     if (!term || !term.trim()) return;
     const q = term.trim();
     const cacheKey = q.toLowerCase();
+    const requestId = searchRequestRef.current + 1;
+    searchRequestRef.current = requestId;
 
-    // Zero-latency RAM cache hit (Electric Speed!)
     if (searchCacheRef.current[cacheKey]) {
       const cachedTracks = searchCacheRef.current[cacheKey];
       setSearchResults(cachedTracks);
       setSearchQuery(q);
-      if (cachedTracks.length > 0) {
-        setCurrentTrack(cachedTracks[0]);
-        setDuration(cachedTracks[0].duration || 210);
-      }
-      setIsLoading(false);
+      setIsSearching(false);
       return;
     }
 
-    setIsLoading(true);
+    setIsSearching(true);
     setSearchQuery(q);
 
     let tracks = [];
-    let searchSuccessful = false;
 
-    // Fetch from a single Invidious instance helper
     const fetchInstance = async (instance) => {
       const url = `${instance}/api/v1/search?q=${encodeURIComponent(q + ' audio')}&type=video`;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000); // 6s abort timeout
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
       try {
         const res = await fetch(url, { signal: controller.signal });
         clearTimeout(timeoutId);
@@ -252,10 +307,9 @@ export function MusicProvider({ children }) {
       }
     };
 
-    // Fetch from iTunes Search API helper
     const fetchITunes = async () => {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6050); // 6s abort timeout
+      const timeoutId = setTimeout(() => controller.abort(), 6050);
       try {
         const res = await fetch(
           `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&media=music&entity=song&limit=30`,
@@ -292,19 +346,16 @@ export function MusicProvider({ children }) {
       }
     };
 
-    // Try parallel fetches concurrently using Promise.any
     try {
       const promises = [
         fetchITunes(),
         ...INVIDIOUS_INSTANCES.map((instance) => fetchInstance(instance))
       ];
       tracks = await Promise.any(promises);
-      searchSuccessful = true;
     } catch (err) {
       console.warn('All concurrent search requests failed or timed out:', err);
     }
 
-    // Final hard fallback if everything is offline
     if (tracks.length === 0) {
       tracks = [
         {
@@ -320,21 +371,16 @@ export function MusicProvider({ children }) {
       ];
     }
 
-    setSearchResults(tracks);
-    searchCacheRef.current[cacheKey] = tracks; // Store in memory cache
-
-    if (tracks.length > 0) {
-      setCurrentTrack(tracks[0]);
-      setDuration(tracks[0].duration || 210);
+    searchCacheRef.current[cacheKey] = tracks;
+    if (requestId === searchRequestRef.current) {
+      setSearchResults(tracks);
+      setIsSearching(false);
     }
-    setIsLoading(false);
   };
 
   useEffect(() => {
-    // Initial default search
     searchMusic('Lofi Chill Study Beats');
 
-    // Preset queries for background pre-fetching
     const presets = [
       'Lofi Chill Study Beats',
       'Deep Focus Ambient',
@@ -343,11 +389,10 @@ export function MusicProvider({ children }) {
       'Synthwave Study Chill'
     ];
 
-    // Background prefetch task to cache other preset moods in RAM (0ms switches)
     const prefetchTimer = setTimeout(() => {
       presets.forEach(async (preset) => {
         const cacheKey = preset.toLowerCase();
-        if (searchCacheRef.current[cacheKey]) return; // already cached
+        if (searchCacheRef.current[cacheKey]) return;
         try {
           const res = await fetch(
             `https://itunes.apple.com/search?term=${encodeURIComponent(preset)}&media=music&entity=song&limit=30`
@@ -383,85 +428,105 @@ export function MusicProvider({ children }) {
     return () => clearTimeout(prefetchTimer);
   }, []);
 
-  // Resolve search term to a real YouTube video ID using Invidious racing
+  const cleanSearchQuery = (title, artist) => {
+    let cleanTitle = title.replace(/\([^)]*\)/g, '');
+    cleanTitle = cleanTitle.replace(/\[[^\]]*\]/g, '');
+    cleanTitle = cleanTitle.replace(/official\s+video|official\s+audio|lyric\s+video|remastered|remaster/gi, '');
+
+    let cleanArtist = artist.replace(/\([^)]*\)/g, '').replace(/\[[^\]]*\]/g, '');
+    cleanArtist = cleanArtist.replace(/&|feat\.|ft\./gi, ' ');
+
+    return `${cleanTitle.trim()} ${cleanArtist.trim()} audio`.replace(/\s+/g, ' ').trim();
+  };
+
   const resolveYTVideoId = async (track) => {
     if (track.id && track.id.length === 11) return track.id;
     if (ytUrlCacheRef.current[track.id]) return ytUrlCacheRef.current[track.id];
 
-    const q = `${track.title} ${track.artist} audio`;
-    
-    // Concurrently race Invidious instances
-    const fetchInstanceId = async (instance) => {
-      const url = `${instance}/api/v1/search?q=${encodeURIComponent(q)}&type=video`;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout
-      try {
-        const res = await fetch(url, { signal: controller.signal });
-        clearTimeout(timeoutId);
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.length > 0 && data[0].videoId) {
-            return data[0].videoId;
+    const raceInstances = async (searchQueryString) => {
+      const fetchInvidious = async (instance) => {
+        const url = `${instance}/api/v1/search?q=${encodeURIComponent(searchQueryString)}&type=video`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        try {
+          const res = await fetch(url, { signal: controller.signal });
+          clearTimeout(timeoutId);
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.length > 0 && data[0].videoId) {
+              return data[0].videoId;
+            }
           }
+          throw new Error('No Invidious videoId');
+        } catch (err) {
+          clearTimeout(timeoutId);
+          throw err;
         }
-        throw new Error('No Invidious videoId');
-      } catch (err) {
-        clearTimeout(timeoutId);
-        throw err;
-      }
-    };
+      };
 
-    // Concurrently race Piped instances
-    const PIPED_INSTANCES = [
-      'https://pipedapi.kavin.rocks',
-      'https://pipedapi.tokhmi.xyz',
-      'https://pipedapi.leptons.xyz',
-      'https://pipedapi.privacydev.net'
-    ];
+      const PIPED_INSTANCES = [
+        'https://pipedapi.kavin.rocks',
+        'https://pipedapi.tokhmi.xyz',
+        'https://pipedapi.leptons.xyz',
+        'https://pipedapi.privacydev.net',
+        'https://pipedapi.col.re',
+        'https://pipedapi.swish.re'
+      ];
 
-    const fetchPipedId = async (instance) => {
-      const url = `${instance}/search?q=${encodeURIComponent(q)}&filter=videos`;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout
-      try {
-        const res = await fetch(url, { signal: controller.signal });
-        clearTimeout(timeoutId);
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.items && data.items.length > 0) {
-            const item = data.items[0];
-            if (item.url) {
-              const videoId = item.url.split('v=')[1];
-              if (videoId && videoId.length === 11) {
-                return videoId;
+      const fetchPiped = async (instance) => {
+        const url = `${instance}/search?q=${encodeURIComponent(searchQueryString)}&filter=videos`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        try {
+          const res = await fetch(url, { signal: controller.signal });
+          clearTimeout(timeoutId);
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.items && data.items.length > 0) {
+              const item = data.items[0];
+              if (item.url) {
+                const videoId = item.url.split('v=')[1];
+                if (videoId && videoId.length === 11) {
+                  return videoId;
+                }
               }
             }
           }
+          throw new Error('No Piped videoId');
+        } catch (err) {
+          clearTimeout(timeoutId);
+          throw err;
         }
-        throw new Error('No Piped videoId');
-      } catch (err) {
-        clearTimeout(timeoutId);
-        throw err;
+      };
+
+      try {
+        const promises = [
+          ...INVIDIOUS_INSTANCES.map((inst) => fetchInvidious(inst)),
+          ...PIPED_INSTANCES.map((inst) => fetchPiped(inst))
+        ];
+        return await Promise.any(promises);
+      } catch (e) {
+        return null;
       }
     };
 
-    try {
-      const promises = [
-        ...INVIDIOUS_INSTANCES.map((instance) => fetchInstanceId(instance)),
-        ...PIPED_INSTANCES.map((instance) => fetchPipedId(instance))
-      ];
-      const videoId = await Promise.any(promises);
-      if (videoId) {
-        ytUrlCacheRef.current[track.id] = videoId;
-        return videoId;
-      }
-    } catch (err) {
-      console.warn('Could not resolve video ID from Invidious or Piped instances:', err);
+    const q1 = cleanSearchQuery(track.title, track.artist);
+    let resolved = await raceInstances(q1);
+    if (resolved) {
+      ytUrlCacheRef.current[track.id] = resolved;
+      return resolved;
     }
+
+    const q2 = `${track.title.replace(/\([^)]*\)/g, '').replace(/\[[^\]]*\]/g, '').trim()} audio`;
+    resolved = await raceInstances(q2);
+    if (resolved) {
+      ytUrlCacheRef.current[track.id] = resolved;
+      return resolved;
+    }
+
     return null;
   };
 
-  // Background pre-resolution of the next 3 tracks' video IDs to warm up the cache
   useEffect(() => {
     if (!currentTrack || searchResults.length === 0) return;
     const idx = searchResults.findIndex((t) => t.id === currentTrack.id);
@@ -475,19 +540,15 @@ export function MusicProvider({ children }) {
     }
   }, [currentTrack, searchResults]);
 
-  // Play track using background YouTube player stream for full-length support
   const playTrack = (track) => {
     if (!track) return;
 
     setCurrentTrack(track);
     setDuration(track.duration || 210);
     setCurrentTime(0);
-
-    // Force YouTube background playback for all tracks (ensuring full-length audio stream)
     currentSourceRef.current = 'yt';
-    setIsPlaying(true);
+    setIsPlaying(false);
 
-    // Pause HTMLAudio
     try {
       if (audioRef.current) audioRef.current.pause();
     } catch (e) {}
@@ -501,45 +562,16 @@ export function MusicProvider({ children }) {
       player = ytPlayerRef.current;
       if (!player) return;
       try {
+        currentSourceRef.current = 'yt';
         if (resolvedId) {
-          currentSourceRef.current = 'yt';
-          player.loadVideoById({
-            videoId: resolvedId,
-            suggestedQuality: 'small'
-          });
+          player.loadVideoById({ videoId: resolvedId, suggestedQuality: 'small' });
           try { if (player && typeof player.playVideo === 'function') player.playVideo(); } catch (e) {}
-        } else if (track.previewUrl) {
-          // Play 30-sec preview clip fallback via HTML5 Audio
-          console.warn("YouTube resolution failed. Falling back to iTunes previewUrl.");
-          currentSourceRef.current = 'audio';
-          
-          if (!audioRef.current) audioRef.current = new Audio();
-          const audio = audioRef.current;
-          audio.src = track.previewUrl;
-          audio.volume = volume;
-          audio.currentTime = 0;
-          
-          // Pause YouTube player if active
-          try {
-            if (player && typeof player.pauseVideo === 'function') player.pauseVideo();
-          } catch (e) {}
-
-          audio.play().then(() => {
-            setIsPlaying(true);
-          }).catch((err) => {
-            console.error("Preview audio play failed:", err);
-            setIsPlaying(false);
-          });
         } else {
-          // Final absolute fallback if no previewUrl: try playPlaylist search query
-          currentSourceRef.current = 'yt';
+          const searchQueryString = cleanSearchQuery(track.title, track.artist);
           if (typeof player.loadPlaylist === 'function') {
-            player.loadPlaylist({
-              listType: 'search',
-              list: track.query || `${track.title} ${track.artist} audio`,
-              index: 0,
-              suggestedQuality: 'small'
-            });
+            player.loadPlaylist({ listType: 'search', list: searchQueryString, index: 0, suggestedQuality: 'small' });
+          } else {
+            player.loadVideoById({ videoId: 'jfKfPfyJRdk', suggestedQuality: 'small' });
           }
           try { if (player && typeof player.playVideo === 'function') player.playVideo(); } catch (e) {}
         }
@@ -548,7 +580,7 @@ export function MusicProvider({ children }) {
       }
     };
 
-    // Case 1: Video ID is already resolved & cached (Runs strictly synchronously, enabling background autoplay!)
+    setIsPlayerLoading(true);
     if (videoId) {
       if (player && isPlayerReadyRef.current) {
         loadAndPlay(videoId);
@@ -564,10 +596,11 @@ export function MusicProvider({ children }) {
       return;
     }
 
-    // Case 2: Asynchronous resolution fallback (if not pre-resolved)
-    setIsLoading(true);
+    if (player && isPlayerReadyRef.current) {
+      loadAndPlay(null);
+    }
+
     resolveYTVideoId(track).then((resolvedId) => {
-      setIsLoading(false);
       if (player && isPlayerReadyRef.current) {
         loadAndPlay(resolvedId);
       } else {
@@ -580,26 +613,21 @@ export function MusicProvider({ children }) {
         setTimeout(() => clearInterval(waiter), 8000);
       }
     }).catch((err) => {
-      console.error("Resolution error:", err);
-      setIsLoading(false);
+      console.error('Resolution error:', err);
+      setIsPlayerLoading(false);
     });
   };
 
   const playRandomNextSong = () => {
     const list = searchResultsRef.current;
     if (!list || list.length === 0) return;
-    if (list.length === 1) {
-      playTrack(list[0]);
-      return;
-    }
-
+    if (list.length === 1) { playTrack(list[0]); return; }
     let randomIndex;
     let attempts = 0;
     do {
       randomIndex = Math.floor(Math.random() * list.length);
       attempts++;
     } while (list[randomIndex]?.id === currentTrackRef.current?.id && attempts < 10);
-
     playTrack(list[randomIndex]);
   };
 
@@ -611,153 +639,152 @@ export function MusicProvider({ children }) {
 
     if (currentSourceRef.current === 'audio') {
       const audio = audioRef.current;
+      if (!audio) return;
       if (isPlaying) {
-        audio.pause();
+        try { audio.pause(); } catch (e) {}
         setIsPlaying(false);
       } else {
-        audio.play().then(() => setIsPlaying(true)).catch(() => {});
+        try {
+          const p = audio.play();
+          if (p && typeof p.then === 'function') {
+            p.then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+          } else {
+            setIsPlaying(true);
+          }
+        } catch (e) { setIsPlaying(false); }
       }
       return;
     }
 
     const player = ytPlayerRef.current;
-    if (player && isPlayerReadyRef.current) {
-      if (isPlaying) {
-        player.pauseVideo();
-        setIsPlaying(false);
-      } else {
-        player.playVideo();
-        setIsPlaying(true);
+    if (isPlaying) {
+      if (player && typeof player.pauseVideo === 'function') {
+        try { player.pauseVideo(); } catch (e) {}
       }
+      setIsPlaying(false);
+    } else {
+      if (player && typeof player.playVideo === 'function') {
+        try { player.playVideo(); } catch (e) {}
+      }
+      setIsPlaying(true);
     }
   };
 
-  const seekTime = (secs) => {
-    setCurrentTime(secs);
-    if (currentSourceRef.current === 'audio' && audioRef.current) {
-      audioRef.current.currentTime = secs;
+  const seekTime = (newTime) => {
+    if (currentSourceRef.current === 'audio') {
+      const audio = audioRef.current;
+      if (audio) {
+        try { audio.currentTime = newTime; setCurrentTime(newTime); } catch (e) {}
+      }
       return;
     }
     const player = ytPlayerRef.current;
-    if (player && isPlayerReadyRef.current && typeof player.seekTo === 'function') {
-      player.seekTo(secs, true);
+    if (player && typeof player.seekTo === 'function') {
+      try { player.seekTo(newTime, true); setCurrentTime(newTime); } catch (e) {}
     }
   };
 
-  const changeVolume = (val) => {
-    const cleanVolume = Math.max(0, Math.min(1, val));
-    setVolume(cleanVolume);
-
-    if (audioRef.current) {
-      audioRef.current.volume = cleanVolume;
+  const changeVolume = (newVol) => {
+    if (currentSourceRef.current === 'audio') {
+      const audio = audioRef.current;
+      if (audio) {
+        try { audio.volume = Math.max(0, Math.min(1, newVol)); } catch (e) {}
+      }
+      setVolume(newVol);
+      return;
     }
+    const player = ytPlayerRef.current;
+    if (player && typeof player.setVolume === 'function') {
+      try { player.setVolume(Math.round(newVol * 100)); } catch (e) {}
+    }
+    setVolume(newVol);
+  };
+
+  const toggleLoop = () => setIsLooping(!isLooping);
+  const toggleAutoRandom = () => setIsAutoRandom(!isAutoRandom);
+  const toggleAutoplay = () => setIsAutoplay(!isAutoplay);
+
+  const unlockAudio = async () => {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) {
+        const ctx = new AC();
+        if (ctx.state === 'suspended') await ctx.resume();
+      }
+    } catch (e) {}
 
     const player = ytPlayerRef.current;
-    if (player && isPlayerReadyRef.current && typeof player.setVolume === 'function') {
-      player.setVolume(Math.round(cleanVolume * 100));
+    if (player && typeof player.playVideo === 'function') {
+      try { player.playVideo(); player.pauseVideo(); } catch (e) {}
     }
-  };
 
-  const toggleLoop = () => {
-    setIsLooping(!isLooping);
-  };
+    try {
+      if (!audioRef.current) audioRef.current = new Audio();
+      const a = audioRef.current;
+      const p = a.play();
+      if (p && typeof p.then === 'function') {
+        p.then(() => { a.pause(); }).catch(() => {});
+      } else { a.pause(); }
+    } catch (e) {}
 
-  const toggleAutoRandom = () => {
-    setIsAutoRandom(!isAutoRandom);
-  };
-
-  const toggleAutoplay = () => {
-    setIsAutoplay(!isAutoplay);
-  };
-
-  const unlockAudio = () => {
     setAudioUnlocked(true);
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (AC) {
-      try {
-        const dummy = new AC();
-        dummy.resume();
-      } catch (e) {}
-    }
-    if (audioRef.current) {
-      audioRef.current.play().then(() => audioRef.current.pause()).catch(() => {});
-    }
   };
 
   const playNextTrack = () => {
     const list = searchResultsRef.current;
-    const current = currentTrackRef.current;
     if (!list || list.length === 0) return;
-    if (!current) {
-      playTrack(list[0]);
-      return;
-    }
-    const idx = list.findIndex((t) => t.id === current.id);
-    if (idx !== -1 && idx < list.length - 1) {
-      playTrack(list[idx + 1]);
-    } else {
-      playTrack(list[0]);
-    }
+    const currentIndex = list.findIndex(t => t.id === currentTrackRef.current?.id);
+    const nextIndex = (currentIndex + 1) % list.length;
+    playTrack(list[nextIndex]);
   };
 
   const playPrevTrack = () => {
     const list = searchResultsRef.current;
-    const current = currentTrackRef.current;
     if (!list || list.length === 0) return;
-    if (!current) {
-      playTrack(list[0]);
-      return;
-    }
-    const idx = list.findIndex((t) => t.id === current.id);
-    if (idx !== -1 && idx > 0) {
-      playTrack(list[idx - 1]);
-    } else {
-      playTrack(list[list.length - 1]);
-    }
+    const currentIndex = list.findIndex(t => t.id === currentTrackRef.current?.id);
+    const prevIndex = (currentIndex - 1 + list.length) % list.length;
+    playTrack(list[prevIndex]);
   };
 
   return (
-    <MusicContext.Provider
-      value={{
-        searchResults,
-        currentTrack,
-        isPlaying,
-        currentTime,
-        duration,
-        volume,
-        isAutoRandom,
-        isLooping,
-        isAutoplay,
-        isLoading,
-        searchQuery,
-        setSearchQuery,
-        searchMusic,
-        playTrack,
-        togglePlayPause,
-        seekTime,
-        changeVolume,
-        toggleLoop,
-        toggleAutoRandom,
-        toggleAutoplay,
-        unlockAudio,
-        audioUnlocked,
-        playNextTrack,
-        playPrevTrack,
-        playRandomNextSong
-      }}
-    >
-      <div 
-        style={{
-          position: 'fixed',
-          bottom: '0px',
-          right: '0px',
-          width: '1px',
-          height: '1px',
-          opacity: 0.01,
-          pointerEvents: 'none',
-          zIndex: 9999
-        }}
-      >
+    <MusicContext.Provider value={{
+      searchResults,
+      currentTrack,
+      isPlaying,
+      currentTime,
+      duration,
+      volume,
+      isAutoRandom,
+      isLooping,
+      isAutoplay,
+      isSearching,
+      isPlayerLoading,
+      searchQuery,
+      setSearchQuery,
+      searchMusic,
+      playTrack,
+      togglePlayPause,
+      seekTime,
+      changeVolume,
+      toggleLoop,
+      toggleAutoRandom,
+      toggleAutoplay,
+      unlockAudio,
+      audioUnlocked,
+      playNextTrack,
+      playPrevTrack,
+      playRandomNextSong
+    }}>
+      <div style={{
+        position: 'fixed',
+        bottom: '0px',
+        right: '0px',
+        width: '1px',
+        height: '1px',
+        opacity: 0.01,
+        pointerEvents: 'none',
+        zIndex: 9999
+      }}>
         <div id="yt-bg-player"></div>
       </div>
       {children}
@@ -777,7 +804,8 @@ export function useMusic() {
     isAutoRandom: false,
     isLooping: false,
     isAutoplay: true,
-    isLoading: false,
+    isSearching: false,
+    isPlayerLoading: false,
     searchQuery: '',
     searchMusic: () => {},
     playTrack: () => {},
