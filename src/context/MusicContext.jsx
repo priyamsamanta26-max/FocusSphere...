@@ -1,13 +1,41 @@
 import React, { createContext, useContext, useState, useRef, useEffect } from 'react';
 
+const DEFAULT_TRACK = {
+  id: 'jfKfPfyJRdk',
+  title: 'Lofi Study Chill Beats',
+  artist: 'Lofi Focus',
+  album: 'FocusSphere Radio',
+  artwork: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&q=80',
+  genre: 'Lofi',
+  duration: 210,
+  previewUrl: null,
+  query: 'Lofi Study Chill Beats'
+};
+
 const MusicContext = createContext();
 
 export function MusicProvider({ children }) {
   const [searchResults, setSearchResults] = useState([]);
-  const [currentTrack, setCurrentTrack] = useState(null);
+  const [currentTrack, setCurrentTrack] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fs_current_track');
+      return saved ? JSON.parse(saved) : DEFAULT_TRACK;
+    } catch (e) {
+      return DEFAULT_TRACK;
+    }
+  });
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(210);
+  const [duration, setDuration] = useState(() => {
+    try {
+      const saved = localStorage.getItem('fs_current_track');
+      if (saved) {
+        const track = JSON.parse(saved);
+        return track.duration || 210;
+      }
+    } catch (e) {}
+    return DEFAULT_TRACK.duration;
+  });
   const [volume, setVolume] = useState(0.85);
   const [isAutoRandom, setIsAutoRandom] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
@@ -15,6 +43,15 @@ export function MusicProvider({ children }) {
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('Lofi Study Chill');
   const [audioUnlocked, setAudioUnlocked] = useState(false);
+
+  // Sync currentTrack change to localStorage
+  useEffect(() => {
+    if (currentTrack) {
+      try {
+        localStorage.setItem('fs_current_track', JSON.stringify(currentTrack));
+      } catch (e) {}
+    }
+  }, [currentTrack]);
 
   const ytPlayerRef = useRef(null);
   const isPlayerReadyRef = useRef(false);
@@ -210,10 +247,6 @@ export function MusicProvider({ children }) {
       const cachedTracks = searchCacheRef.current[cacheKey];
       setSearchResults(cachedTracks);
       setSearchQuery(q);
-      if (cachedTracks.length > 0) {
-        setCurrentTrack(cachedTracks[0]);
-        setDuration(cachedTracks[0].duration || 210);
-      }
       setIsLoading(false);
       return;
     }
@@ -274,7 +307,7 @@ export function MusicProvider({ children }) {
             return data.results.map((item) => {
               const rawDuration = item.trackTimeMillis ? Math.round(item.trackTimeMillis / 1000) : 210;
               const artwork = item.artworkUrl100
-                ? item.artworkUrl100.replace('100x100bb', '600x600bb')
+                ? item.artworkUrl105.replace('100x100bb', '600x600bb')
                 : 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&q=80';
 
               return {
@@ -328,11 +361,6 @@ export function MusicProvider({ children }) {
 
     setSearchResults(tracks);
     searchCacheRef.current[cacheKey] = tracks; // Store in memory cache
-
-    if (tracks.length > 0) {
-      setCurrentTrack(tracks[0]);
-      setDuration(tracks[0].duration || 210);
-    }
     setIsLoading(false);
   };
 
@@ -533,43 +561,27 @@ export function MusicProvider({ children }) {
       player = ytPlayerRef.current;
       if (!player) return;
       try {
+        currentSourceRef.current = 'yt';
         if (resolvedId) {
-          currentSourceRef.current = 'yt';
           player.loadVideoById({
             videoId: resolvedId,
             suggestedQuality: 'small'
           });
           try { if (player && typeof player.playVideo === 'function') player.playVideo(); } catch (e) {}
-        } else if (track.previewUrl) {
-          // Play 30-sec preview clip fallback via HTML5 Audio
-          console.warn("YouTube resolution failed. Falling back to iTunes previewUrl.");
-          currentSourceRef.current = 'audio';
-          
-          if (!audioRef.current) audioRef.current = new Audio();
-          const audio = audioRef.current;
-          audio.src = track.previewUrl;
-          audio.volume = volume;
-          audio.currentTime = 0;
-          
-          // Pause YouTube player if active
-          try {
-            if (player && typeof player.pauseVideo === 'function') player.pauseVideo();
-          } catch (e) {}
-
-          audio.play().then(() => {
-            setIsPlaying(true);
-          }).catch((err) => {
-            console.error("Preview audio play failed:", err);
-            setIsPlaying(false);
-          });
         } else {
-          // Final absolute fallback if no previewUrl: try playPlaylist search query
-          currentSourceRef.current = 'yt';
+          // Fallback to server-side playlist search of the clean search query (always full length)
+          const searchQueryString = cleanSearchQuery(track.title, track.artist);
           if (typeof player.loadPlaylist === 'function') {
             player.loadPlaylist({
               listType: 'search',
-              list: track.query || `${track.title} ${track.artist} audio`,
+              list: searchQueryString,
               index: 0,
+              suggestedQuality: 'small'
+            });
+          } else {
+            // Hard fallback: load default track ID
+            player.loadVideoById({
+              videoId: 'jfKfPfyJRdk',
               suggestedQuality: 'small'
             });
           }
