@@ -83,8 +83,8 @@ function Sidebar({ onLogout, showMobile, closeMobile }) {
             {/**/}
           </div>
           <div className="flex-1">
-            <div className="text-sm font-bold text-slate-100">{/* user email placeholder */}User</div>
-            <div className="text-xs text-slate-500">Ready</div>
+            <div className="text-sm font-bold text-slate-100">User</div>
+            <div className="text-xs text-slate-505">Ready</div>
           </div>
         </div>
         <button onClick={onLogout} className="w-full py-3 rounded-lg bg-amber-500/10 hover:bg-amber-500/90 text-amber-500 hover:text-white transition-all"> <LogOut size={14} /> Logout</button>
@@ -202,7 +202,7 @@ function AlarmTriggerModal({ ringingAlarm, onDismiss }) {
 function MainLayout({ user, onLogout }) {
   const location = useLocation();
   const [ringingAlarm, setRingingAlarm] = useState(null);
-  const [triggeredIds, setTriggeredIds] = useState(new Set()); // state mirror of triggeredIdsRef for inspection
+  const [triggeredIds, setTriggeredIds] = useState(new Set());
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const getTitle = () => {
@@ -225,8 +225,6 @@ function MainLayout({ user, onLogout }) {
     return 'Good evening';
   };
 
-  // Continuous background Alarm Checker for real-time loud siren trigger
-  // Use a ref for triggeredIds to avoid stale closures and unnecessary effect reruns
   const triggeredIdsRef = useRef(new Set());
 
   useEffect(() => {
@@ -239,7 +237,6 @@ function MainLayout({ user, onLogout }) {
 
         const now = new Date();
         const currentHHMM = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-        // Use local date (YYYY-MM-DD) to match how alarm_date is stored/entered by users
         const currentDate = `${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2,'0')}-${now.getDate().toString().padStart(2,'0')}`;
 
         alarms.forEach((alarm) => {
@@ -247,15 +244,12 @@ function MainLayout({ user, onLogout }) {
           const dateMatches = !alarm.alarm_date || alarm.alarm_date === currentDate;
           const alarmKey = `${alarm.id}_${alarmHHMM}_${currentDate}`;
 
-          // Trigger if the alarm time is equal or earlier within the same minute and hasn't fired yet for this date
           if (dateMatches && alarmHHMM === currentHHMM && !triggeredIdsRef.current.has(alarmKey)) {
             if (!mounted) return;
             console.info('Alarm triggered', alarmKey, alarm);
             try { startLoudAlarm(); } catch (e) { console.error('startLoudAlarm failed', e); }
             setRingingAlarm(alarm);
-            // mark as triggered for this date
             triggeredIdsRef.current.add(alarmKey);
-            // also update state copy for any UI needs
             setTriggeredIds(new Set(triggeredIdsRef.current));
           }
         });
@@ -264,9 +258,7 @@ function MainLayout({ user, onLogout }) {
       }
     };
 
-    // poll every second for precise timing
     const interval = setInterval(checkAlarmTime, 1000);
-    // run once immediately on mount
     checkAlarmTime();
 
     return () => { mounted = false; clearInterval(interval); };
@@ -291,9 +283,9 @@ function MainLayout({ user, onLogout }) {
 
       <Sidebar onLogout={onLogout} showMobile={isSidebarOpen} closeMobile={() => setIsSidebarOpen(false)} />
       
-      <main className="md:ml-[20rem] ml-0 flex-1 p-8 overflow-y-auto h-screen relative z-10">
+      <main className="md:ml-[20rem] ml-0 flex-1 p-4 md:p-8 overflow-y-auto h-screen relative z-10">
         {/* Premium Frosted Header Panel */}
-        <header className="glass-card rounded-3xl px-8 py-5.5 mb-8 flex justify-between items-center shadow-lg border border-teal-500/20">
+        <header className="glass-card rounded-3xl px-4 md:px-8 py-4 md:py-5.5 mb-8 flex justify-between items-center shadow-lg border border-teal-500/20">
           <div className="flex items-center gap-4">
             <button 
               onClick={() => setIsSidebarOpen(true)}
@@ -317,7 +309,7 @@ function MainLayout({ user, onLogout }) {
             </div>
             <div className="hidden md:block">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Log in as</p>
-              <p className="text-xs font-bold text-slate-350 mt-0.5">{user.email}</p>
+              <p className="text-xs font-bold text-slate-355 mt-0.5">{user.email}</p>
             </div>
           </div>
         </header>
