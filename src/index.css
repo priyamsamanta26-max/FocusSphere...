@@ -228,6 +228,13 @@ input:focus, textarea:focus, select:focus {
   .login-brand .logo { font-size: 36px; }
 }
 
+@media (max-width: 640px) {
+  .login-ui { padding: 20px 12px; }
+  .login-card { padding: 16px; gap: 16px; }
+  .login-brand { padding: 12px 4px; }
+  .login-form-wrap { padding: 4px; }
+}
+
 /* Premium Deep Space Glassmorphism Styles (Dark Mode) */
 .glass {
   background: rgba(18, 18, 20, 0.85);
